@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import io from 'socket.io-client';
-const socket = io('http://localhost:3001');
+import PlayerIdDisplay from './PlayerIdDisplay';
+import AddPlayerById from './AddPlayerById';
+import socket, { isPlayerVisible, visiblePlayers } from '../socket';
 
 // Tree Images
 import tree from '../assets/tree.png';
@@ -183,14 +184,16 @@ const CanvasGame = ({ playerName }) => {
         });
       }
 
-      Object.entries(players).forEach(([id, { x, y, name }]) => {
-        const drawX = id === myId ? fixedPlayerX : x - cameraOffset;
-        ctx.fillStyle = id === myId ? 'blue' : 'red';
-        ctx.fillRect(drawX, roadY - 40 - y, 20, 40);
-        ctx.fillStyle = 'black';
-        ctx.font = '14px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(name || 'Player', drawX + 10, roadY - 45 - y);
+      Object.entries(players).forEach(([id, player]) => {
+        if (visiblePlayers.has(id)) {
+          const drawX = id === myId ? fixedPlayerX : player.x - cameraOffset;
+          ctx.fillStyle = id === myId ? 'blue' : 'red';
+          ctx.fillRect(drawX, roadY - 40 - player.y, 20, 40);
+          ctx.fillStyle = 'black';
+          ctx.font = '14px Arial';
+          ctx.textAlign = 'center';
+          ctx.fillText(player.name || 'Player', drawX + 10, roadY - 45 - player.y);
+        }
       });
     };
 
@@ -199,14 +202,18 @@ const CanvasGame = ({ playerName }) => {
   }, [players, trees, obstacles, myId]);
 
   return (
-    <div className="flex justify-center">
-      <canvas
-        ref={canvasRef}
-        width={800}
-        height={600}
-        className="border-2 border-black bg-white"
-        style={{ boxShadow: 'inset 0 0 20px 10px rgba(0, 0, 0, 0.5)' }}
-      />
+    <div className="relative">
+      {myId && <PlayerIdDisplay playerId={myId} />}
+      <div className="flex justify-center mt-12">
+        <canvas
+          ref={canvasRef}
+          width={800}
+          height={600}
+          className="border-2 border-black bg-white"
+          style={{ boxShadow: 'inset 0 0 20px 10px rgba(0, 0, 0, 0.5)' }}
+        />
+      </div>
+      {myId && <AddPlayerById myId={myId} />}
     </div>
   );
 };
