@@ -17,6 +17,10 @@ import rock from '../assets/rock.png';
 import barrel from '../assets/barrel.png';
 import spike from '../assets/spike.png';
 
+// Player Image
+import stickmanStill from '../assets/stickmanStill.png'; // still frame
+import stickmanGif from '../assets/stickman.gif'; // animated gif for movement
+
 const treeMap = {
   'tree.png': tree,
   'tree2.png': tree2,
@@ -44,6 +48,11 @@ const CanvasGame = ({ playerName }) => {
   const gravity = 1;
   const groundY = 0;
   const fixedPlayerX = 400;
+  const [isMoving, setIsMoving] = useState(false);
+  const lastPosRef = useRef(0);
+  // Define game boundaries
+  const maxX = 10000; // Maximum X position (adjust as needed for your game world)
+  const maxY = 200;  // Maximum Y position for jumps
 
   useEffect(() => {
     if (playerName) {
@@ -53,6 +62,10 @@ const CanvasGame = ({ playerName }) => {
     socket.on('init', ({ id, players, trees: serverTrees, obstacles: serverObstacles }) => {
       setMyId(id);
       setPlayers(players);
+
+      if (players[id]) {
+        lastPosRef.current = players[id].x;
+      }
 
       // Load trees
       if (serverTrees?.length) {
@@ -95,6 +108,7 @@ const CanvasGame = ({ playerName }) => {
     socket.on('player-moved', ({ id, x, y }) => {
       setPlayers(prev => {
         const existing = prev[id] || {};
+        // Remove player movement tracking for animation
         return { ...prev, [id]: { ...existing, x, y } };
       });
     });
@@ -107,8 +121,22 @@ const CanvasGame = ({ playerName }) => {
       });
     });
 
-    const handleKeyDown = e => { pressedKeys.current[e.key] = true; };
-    const handleKeyUp = e => { pressedKeys.current[e.key] = false; };
+    const handleKeyDown = e => {
+      pressedKeys.current[e.key] = true;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+        setIsMoving(true);
+      }
+    };
+
+    const handleKeyUp = e => {
+      pressedKeys.current[e.key] = false;
+
+      // If no key is pressed, stop the animation immediately
+      if (!pressedKeys.current['ArrowRight'] && !pressedKeys.current['ArrowUp']) {
+        setIsMoving(false);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
@@ -117,21 +145,40 @@ const CanvasGame = ({ playerName }) => {
         const me = prev[myId];
         if (!me) return prev;
         let updated = { ...me };
+        let isCurrentlyMoving = false;
 
-        if (pressedKeys.current['ArrowRight']) updated.x += 5;
+        if (pressedKeys.current['ArrowRight']) {
+          // Add boundary check for right movement
+          const newX = Math.min(updated.x + 5, maxX);
+          updated.x = newX;
+          isCurrentlyMoving = true;
+        }
+
         if (pressedKeys.current['ArrowUp'] && !updated.isJumping) {
           velocityY.current = -15;
           updated.isJumping = true;
+          isCurrentlyMoving = true;
         }
 
         if (updated.isJumping) {
           velocityY.current += gravity;
-          updated.y -= velocityY.current;
+          // Apply velocity with boundary check for Y position
+          updated.y = Math.min(Math.max(updated.y - velocityY.current, groundY), maxY);
+          isCurrentlyMoving = true;
+
           if (updated.y <= groundY) {
             updated.y = groundY;
             updated.isJumping = false;
             velocityY.current = 0;
+
+            // Only consider moving if still pressing right arrow
+            isCurrentlyMoving = pressedKeys.current['ArrowRight'];
           }
+        }
+
+        // Update the movement state if needed
+        if (isCurrentlyMoving !== isMoving) {
+          setIsMoving(isCurrentlyMoving);
         }
 
         if (updated.x !== me.x || updated.y !== me.y) {
@@ -159,6 +206,15 @@ const CanvasGame = ({ playerName }) => {
       const cameraOffset = me ? me.x - fixedPlayerX : 0;
       const roadY = 400;
 
+      // Draw a plain white background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 800, 600);
+
+      // Draw game boundaries - visible border to show play area
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, 800, 600);
+
       ctx.fillStyle = '#000';
       ctx.fillRect(0, roadY, 800, 3);
 
@@ -176,42 +232,115 @@ const CanvasGame = ({ playerName }) => {
         obstacles.forEach(ob => {
           const obsStart = ob.x;
           const obsEnd = ob.x + 40;
-          if (me.x + 20 > obsStart && me.x < obsEnd) {
-            const newX = me.x - 20;
+          const playerLeft = me.x;
+          const playerRight = me.x + 30;
+          
+          // Check for collision with obstacle
+          if (playerRight > obsStart && playerLeft < obsEnd) {
+            // Move player back to avoid penetrating the obstacle
+            const newX = obsStart - 30;
             setPlayers(prev => ({ ...prev, [myId]: { ...me, x: newX } }));
             socket.emit('update-position', { ...me, x: newX });
           }
         });
       }
 
-      Object.entries(players).forEach(([id, player]) => {
-        if (visiblePlayers.has(id)) {
-          const drawX = id === myId ? fixedPlayerX : player.x - cameraOffset;
-          ctx.fillStyle = id === myId ? 'blue' : 'red';
-          ctx.fillRect(drawX, roadY - 40 - player.y, 20, 40);
-          ctx.fillStyle = 'black';
-          ctx.font = '14px Arial';
-          ctx.textAlign = 'center';
-          ctx.fillText(player.name || 'Player', drawX + 10, roadY - 45 - player.y);
+      // Ensure player stays within horizontal game boundaries (for network updates)
+      if (me) {
+        const worldLeft = 0;
+        const worldRight = maxX;
+        
+        if (me.x < worldLeft) {
+          setPlayers(prev => ({ ...prev, [myId]: { ...me, x: worldLeft } }));
+          socket.emit('update-position', { ...me, x: worldLeft });
+        } else if (me.x > worldRight) {
+          setPlayers(prev => ({ ...prev, [myId]: { ...me, x: worldRight } }));
+          socket.emit('update-position', { ...me, x: worldRight });
         }
-      });
+      }
+
+      // We no longer draw players on the canvas because we're using absolute positioned divs
     };
 
     const interval = setInterval(draw, 1000 / 60);
     return () => clearInterval(interval);
   }, [players, trees, obstacles, myId]);
 
+  // Inject the animation styles when component mounts
+  useEffect(() => {
+    // Animation now handled directly by img tag switching
+  }, []);
+
   return (
     <div className="relative">
       {myId && <PlayerIdDisplay playerId={myId} />}
       <div className="flex justify-center mt-12">
-        <canvas
-          ref={canvasRef}
-          width={800}
-          height={600}
-          className="border-2 border-black bg-white"
-          style={{ boxShadow: 'inset 0 0 20px 10px rgba(0, 0, 0, 0.5)' }}
-        />
+        <div className="relative">
+          <canvas
+            ref={canvasRef}
+            width={800}
+            height={600}
+            className="border-2 border-black bg-white"
+            style={{ boxShadow: 'inset 0 0 20px 10px rgba(0, 0, 0, 0.5)' }}
+          />
+
+          {/* Overlay the stickman gifs on top of the canvas */}
+          {Object.entries(players).map(([id, player]) => {
+            if (visiblePlayers.has(id)) {
+              const me = players[myId];
+              const cameraOffset = me ? me.x - fixedPlayerX : 0;
+              const drawX = id === myId ? fixedPlayerX : player.x - cameraOffset;
+              const roadY = 400;
+
+              // Only animate the local player, other players always use static image
+              const playerMoving = id === myId ? isMoving : false;
+
+              // Ensure player stays within canvas boundaries for display
+              const constrainedX = Math.max(0, Math.min(drawX, 770)); // 800 - player width (30px)
+              const constrainedY = Math.max(0, Math.min(roadY - 60 - player.y, 540)); // 600 - player height (60px)
+
+              // Create a more reliable animation approach
+              const getPlayerStyle = () => {
+                const baseStyle = {
+                  position: 'absolute',
+                  left: `${constrainedX}px`,
+                  top: `${constrainedY}px`,
+                  width: '30px', // Increased from 20px to 30px
+                  height: '60px', // Increased from 40px to 60px
+                  zIndex: 10,
+                  overflow: 'visible' // Ensure image isn't clipped
+                };
+                
+                return baseStyle;
+              };
+              
+              return (
+                <div
+                  key={id}
+                  style={getPlayerStyle()}
+                >
+                  {/* Only render one image at a time */}
+                  <img
+                    key={`stickman-${id}-${playerMoving}`} // Force re-render when animation state changes
+                    src={playerMoving ? stickmanGif : stickmanStill}
+                    alt="stickman"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain', // Changed from 'cover' to 'contain'
+                      objectPosition: 'center',
+                      display: 'block'
+                    }}
+                  />
+                  <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs whitespace-nowrap">
+                    {player.name || 'Player'}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })}
+        </div>
       </div>
       {myId && <AddPlayerById myId={myId} />}
     </div>
@@ -219,3 +348,4 @@ const CanvasGame = ({ playerName }) => {
 };
 
 export default CanvasGame;
+
