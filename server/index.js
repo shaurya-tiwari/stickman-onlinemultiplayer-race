@@ -14,13 +14,17 @@ let inviteCodes = {};
 // Track which players can see each other
 let playerVisibility = {};
 
-let treeImages = ['tree.png', 'tree2.png', 'tree3.png', 'tree4.png', 'tree5.png', 'tree6.png', 'tree7.png'];
+let treeImages = [
+  'tree.png', 'tree2.png', 'tree3.png', 'tree4.png', 'tree5.png', 
+  'tree6.png', 'tree7.png', 'tree9.png', 'tree10.png', 'tree11.png', 
+  'tree12.png', 'tree13.png', 'tree14.png', 'tree15.png', 'tree16.png', 'tree17.png'
+];
 let trees = [];
 let obstacles = [];
 
 const generateTrees = () => {
   trees = [];
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 100; i++) {
     const x = i * 400 + 300 + Math.random() * 200;
     const image = treeImages[Math.floor(Math.random() * treeImages.length)];
     trees.push({ x, image });

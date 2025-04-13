@@ -11,6 +11,15 @@ import tree4 from '../assets/tree4.png';
 import tree5 from '../assets/tree5.png';
 import tree6 from '../assets/tree6.png';
 import tree7 from '../assets/tree7.png';
+import tree9 from '../assets/tree9.png';
+import tree10 from '../assets/tree10.png';
+import tree11 from '../assets/tree11.png';
+import tree12 from '../assets/tree12.png';
+import tree13 from '../assets/tree13.png';
+import tree14 from '../assets/tree14.png';
+import tree15 from '../assets/tree15.png';
+import tree16 from '../assets/tree16.png';
+import tree17 from '../assets/tree17.png';
 
 // Obstacle Images
 import rock from '../assets/rock.png';
@@ -29,6 +38,15 @@ const treeMap = {
   'tree5.png': tree5,
   'tree6.png': tree6,
   'tree7.png': tree7,
+  'tree9.png': tree9,
+  'tree10.png': tree10,
+  'tree11.png': tree11,
+  'tree12.png': tree12,
+  'tree13.png': tree13,
+  'tree14.png': tree14,
+  'tree15.png': tree15,
+  'tree16.png': tree16,
+  'tree17.png': tree17,
 };
 
 const obstacleMap = {
