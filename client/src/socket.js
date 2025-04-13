@@ -12,12 +12,15 @@ const socket = io('http://localhost:3001', {
 
 // Track which players we can see (for client-side filtering)
 const visiblePlayers = new Set();
+let myPlayerId = null;
 
 // Add the current player to visible list when we get our ID
 socket.on('init', ({ id }) => {
   if (id) {
     console.log(`Init received with my ID: ${id}`);
+    myPlayerId = id;
     visiblePlayers.add(id); // Always see ourselves
+    console.log('Initialized visible players with self:', Array.from(visiblePlayers));
   }
 });
 
@@ -25,19 +28,47 @@ socket.on('init', ({ id }) => {
 socket.on('player-joined', ({ id }) => {
   console.log(`Player joined and is now visible: ${id}`);
   visiblePlayers.add(id);
+  
+  // Always make sure we're in our own visibility list
+  if (myPlayerId) {
+    visiblePlayers.add(myPlayerId);
+  }
+  
   console.log('Current visible players:', Array.from(visiblePlayers));
+});
+
+// Add functionality to receive new player data
+socket.on('new-player', ({ id, name, x, y }) => {
+  console.log(`Received new player data for ${id} (${name})`);
+  // When we get new player data, ensure they're added to visible players
+  visiblePlayers.add(id);
+  
+  // Always make sure we're in our own visibility list
+  if (myPlayerId) {
+    visiblePlayers.add(myPlayerId);
+  }
+  
+  console.log('Current visible players after new-player:', Array.from(visiblePlayers));
 });
 
 // Remove players when they disconnect
 socket.on('player-disconnected', ({ id }) => {
   console.log(`Player disconnected: ${id}`);
   visiblePlayers.delete(id);
+  
+  // Always make sure we're in our own visibility list
+  if (myPlayerId) {
+    visiblePlayers.add(myPlayerId);
+  }
+  
   console.log('Current visible players after disconnect:', Array.from(visiblePlayers));
 });
 
 // Add helpers to check if a player should be visible
 const isPlayerVisible = (playerId) => {
-  return visiblePlayers.has(playerId);
+  // Always return true for now to ensure all players are visible
+  return true;
+  // Original check: return visiblePlayers.has(playerId);
 };
 
 // Format a player ID for display (XXX-XXX-XXXX)
@@ -80,8 +111,9 @@ const safeEmit = (event, data, callback) => {
 // Debug function to log all visible players
 const logVisiblePlayers = () => {
   console.log('Current visible players:', Array.from(visiblePlayers));
+  return Array.from(visiblePlayers);
 };
 
 // Export both the socket and helper functions
 export default socket;
-export { isPlayerVisible, visiblePlayers, formatDisplayId, cleanId, safeEmit, logVisiblePlayers };
+export { isPlayerVisible, visiblePlayers, formatDisplayId, cleanId, safeEmit, logVisiblePlayers, myPlayerId };

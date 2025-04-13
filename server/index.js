@@ -29,6 +29,11 @@ let players = {};
 let inviteCodes = {};
 // Track which players can see each other
 let playerVisibility = {};
+// Game host and race settings
+let gameHost = null;
+let raceDistance = 1000; // Default race distance
+let raceFinished = false;
+let raceWinner = null;
 
 let treeImages = [
   'tree.png', 'tree2.png', 'tree3.png', 'tree4.png', 'tree5.png', 
@@ -143,8 +148,10 @@ io.on('connection', socket => {
 
   // Handle regular player name set (first player or no invite)
   socket.on('set-name', (name) => {
+    console.log(`Player ${socket.customId} setting name to ${name}`);
+    
     // Initialize the player
-    players[socket.customId] = { x: 0, y: 0, name };
+    players[socket.customId] = { x: 0, y: 0, name, isJumping: false };
     
     // Create visible players object (only self)
     const visiblePlayers = {};
@@ -234,58 +241,58 @@ io.on('connection', socket => {
     players[playerId].x = hostX - 100;
     players[playerId].y = hostY;
     
-    // Make players visible to each other
-    // Initialize visibility sets if they don't exist
-    if (!playerVisibility[playerId]) {
-      playerVisibility[playerId] = new Set([playerId]);
+    // Make ALL players in the game visible to each other, bypass the visibility system
+    // This ensures everyone can see each other regardless of how they joined
+    
+    // Get all players who are currently visible to the host
+    const allPlayers = new Set([...playerVisibility[socket.customId] || [], socket.customId, playerId]);
+    
+    // Make each player visible to all other players
+    allPlayers.forEach(id => {
+      if (!playerVisibility[id]) {
+        playerVisibility[id] = new Set([id]); // Always see yourself
+      } else {
+        // Make sure player can still see themselves (important for host)
+        playerVisibility[id].add(id);
+      }
+      
+      // Make all other players visible to this player
+      allPlayers.forEach(otherId => {
+        if (id !== otherId) {
+          playerVisibility[id].add(otherId);
+          
+          // Send event to make this player visible to the other player
+          io.to(id).emit('player-joined', { id: otherId });
+          
+          // Send player data to this player
+          if (players[otherId]) {
+            io.to(id).emit('new-player', {
+              id: otherId,
+              name: players[otherId].name,
+              x: players[otherId].x, 
+              y: players[otherId].y
+            });
+          }
+        }
+      });
+    });
+    
+    // Make sure to re-broadcast the host to itself!
+    // This is a critical fix for the visibility issue
+    if (players[socket.customId]) {
+      socket.emit('player-joined', { id: socket.customId });
+      socket.emit('new-player', {
+        id: socket.customId,
+        name: players[socket.customId].name,
+        x: players[socket.customId].x,
+        y: players[socket.customId].y
+      });
     }
     
-    if (!playerVisibility[socket.customId]) {
-      playerVisibility[socket.customId] = new Set([socket.customId]);
-    }
-    
-    // Add the players to each other's visibility sets
-    playerVisibility[playerId].add(socket.customId);
-    playerVisibility[socket.customId].add(playerId);
-    
+    console.log('Updated visibility for all players in the game');
     console.log('Host visibility set:', Array.from(playerVisibility[socket.customId]));
-    console.log('Joining player visibility set:', Array.from(playerVisibility[playerId]));
     
-    // Find the joining player's socket using the custom ID
-    const joiningPlayerSocket = findSocketByCustomId(playerId);
-    if (!joiningPlayerSocket) {
-      console.log(`Warning: Could not find socket for joining player ${playerId}`);
-    } else {
-      console.log(`Found socket for joining player: ${joiningPlayerSocket.id}`);
-    }
-    
-    // Step 1: Tell the joining player that the host is now visible to them
-    io.to(playerId).emit('player-joined', { id: socket.customId });
-    console.log(`Sent player-joined to joining player for host ${socket.customId}`);
-    
-    // Step 2: Tell the host that the joining player is now visible to them
-    socket.emit('player-joined', { id: playerId });
-    console.log(`Sent player-joined to host for joining player ${playerId}`);
-    
-    // Step 3: Send the host's player data to the joining player
-    io.to(playerId).emit('new-player', { 
-      id: socket.customId, 
-      name: players[socket.customId].name,
-      x: players[socket.customId].x,
-      y: players[socket.customId].y
-    });
-    console.log(`Sent host player data to joining player`);
-    
-    // Step 4: Send the joining player's data to the host
-    socket.emit('new-player', { 
-      id: playerId, 
-      name: players[playerId].name,
-      x: players[playerId].x,
-      y: players[playerId].y 
-    });
-    console.log(`Sent joining player data to host`);
-    
-    // Step 5: Tell the joining player their request was accepted
+    // Specifically notify the joining player that their request was accepted
     io.to(playerId).emit('request-accepted');
     console.log(`Notified joining player that request was accepted`);
   });
@@ -296,21 +303,165 @@ io.on('connection', socket => {
     io.to(playerId).emit('request-rejected');
   });
 
+  // Host management
+  socket.on('check-host-status', (data, callback) => {
+    const isHost = gameHost === socket.customId;
+    console.log(`Player ${socket.customId} checked host status: ${isHost}`);
+    callback({ isHost });
+  });
+
+  socket.on('become-host', (data, callback) => {
+    // If there's no host or the current host is disconnected
+    if (!gameHost || !players[gameHost]) {
+      gameHost = socket.customId;
+      console.log(`Player ${socket.customId} is now the host`);
+      
+      // Initialize the player if not already initialized
+      if (!players[socket.customId]) {
+        players[socket.customId] = { x: 0, y: 0, name: 'Host', isJumping: false };
+      }
+      
+      // Make sure the host has a visibility set
+      if (!playerVisibility[socket.customId]) {
+        playerVisibility[socket.customId] = new Set([socket.customId]);
+      } else {
+        // Always make sure the host can see themselves
+        playerVisibility[socket.customId].add(socket.customId);
+      }
+      
+      // CRITICAL FIX: Ensure the host exists in their own players list
+      // If the host is starting a new game and hasn't seen any player list yet
+      // This makes sure they initialize with themselves visible
+      socket.emit('init', {
+        id: socket.customId,
+        players: { [socket.customId]: players[socket.customId] },
+        trees,
+        obstacles
+      });
+      
+      // Make sure the host is visible to themselves
+      socket.emit('player-joined', { id: socket.customId });
+      
+      // Send host player data to themselves to ensure they see themselves
+      socket.emit('new-player', {
+        id: socket.customId,
+        name: players[socket.customId].name,
+        x: players[socket.customId].x,
+        y: players[socket.customId].y
+      });
+      
+      // Notify the new host
+      callback({ success: true });
+      
+      // Broadcast host change to all connected players
+      io.emit('host-status', { hostId: gameHost, hostName: players[gameHost]?.name || 'Unknown Host' });
+      
+      // Send current game settings to the new host
+      socket.emit('game-settings-updated', { raceDistance });
+      
+      // Print debug info
+      console.log('Host visibility set:', Array.from(playerVisibility[socket.customId]));
+    } else {
+      console.log(`Player ${socket.customId} tried to become host but ${gameHost} is already host`);
+      callback({ 
+        success: false, 
+        message: 'There is already an active host for this game' 
+      });
+    }
+  });
+
+  socket.on('update-game-settings', ({ raceDistance: newDistance }, callback) => {
+    // Only the host can update game settings
+    if (socket.customId === gameHost) {
+      raceDistance = newDistance;
+      console.log(`Host ${socket.customId} updated race distance to ${raceDistance}m`);
+      
+      // Reset race state when settings change
+      raceFinished = false;
+      raceWinner = null;
+      
+      // Make sure the host is still visible to themselves after settings update
+      if (playerVisibility[socket.customId]) {
+        // Make sure the host can see themselves
+        playerVisibility[socket.customId].add(socket.customId);
+        
+        // Re-send the host to themselves to fix visibility issues
+        socket.emit('player-joined', { id: socket.customId });
+        
+        // CRITICAL FIX: Re-send player data and ensure host is in their own players list
+        if (players[socket.customId]) {
+          socket.emit('new-player', {
+            id: socket.customId,
+            name: players[socket.customId].name,
+            x: players[socket.customId].x,
+            y: players[socket.customId].y
+          });
+        }
+      }
+      
+      // Broadcast settings to all players
+      io.emit('game-settings-updated', { raceDistance });
+      
+      callback({ success: true });
+    } else {
+      console.log(`Player ${socket.customId} tried to update settings but is not the host`);
+      callback({ 
+        success: false, 
+        message: 'Only the host can update game settings' 
+      });
+    }
+  });
+
+  // Player race finish handling
+  socket.on('player-finished', ({ playerName }) => {
+    // Only register the first player to finish
+    if (!raceFinished) {
+      raceFinished = true;
+      raceWinner = {
+        id: socket.customId,
+        name: playerName || players[socket.customId]?.name || 'Unknown Player'
+      };
+      
+      console.log(`Player ${socket.customId} (${raceWinner.name}) won the race!`);
+      
+      // Broadcast winner to all players
+      io.emit('race-winner', {
+        playerId: socket.customId,
+        playerName: raceWinner.name
+      });
+    }
+  });
+
   // Handle race restart
   socket.on('restart-race', () => {
-    // Only broadcast to players who can see this player (the host)
-    if (playerVisibility[socket.customId]) {
-      playerVisibility[socket.customId].forEach(visibleToId => {
-        if (visibleToId !== socket.customId) { // Don't send to self (the initiator)
-          io.to(visibleToId).emit('restart-race');
-        }
-      });
+    // Host can restart the race
+    if (socket.customId === gameHost || !gameHost) {
+      // Reset race state
+      raceFinished = false;
+      raceWinner = null;
+      
+      console.log(`Race restarted by ${socket.customId}`);
+      
+      // Only broadcast to players who can see this player (the host)
+      if (playerVisibility[socket.customId]) {
+        playerVisibility[socket.customId].forEach(visibleToId => {
+          if (visibleToId !== socket.customId) { // Don't send to self (the initiator)
+            io.to(visibleToId).emit('restart-race');
+          }
+        });
+      }
     }
   });
 
   // Disconnect handling
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.customId}`);
+    
+    // If the host disconnects, clear the host
+    if (socket.customId === gameHost) {
+      gameHost = null;
+      console.log('Game host disconnected, host position is now open');
+    }
     
     // Notify only players who could see this player
     if (playerVisibility[socket.customId]) {

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import PlayerIdDisplay from './PlayerIdDisplay';
 import AddPlayerById from './AddPlayerById';
-import socket, { isPlayerVisible, visiblePlayers } from '../socket';
+import GameSettings from './GameSettings';
+import socket, { isPlayerVisible, visiblePlayers, safeEmit } from '../socket';
 
 // Tree Images
 import tree from '../assets/tree.png';
@@ -55,7 +56,7 @@ const obstacleMap = {
   'spike.png': spike,
 };
 
-const CanvasGame = ({ playerName }) => {
+const CanvasGame = ({ playerName, isHost }) => {
   const canvasRef = useRef(null);
   const [players, setPlayers] = useState({});
   const [myId, setMyId] = useState(null);
@@ -72,6 +73,11 @@ const CanvasGame = ({ playerName }) => {
   const maxX = 10000; // Maximum X position (adjust as needed for your game world)
   const maxY = 200;  // Maximum Y position for jumps
   const [showRestartNotification, setShowRestartNotification] = useState(false);
+  // Race finish line
+  const [raceDistance, setRaceDistance] = useState(1000);
+  const [raceWinner, setRaceWinner] = useState(null);
+  const [showWinnerNotification, setShowWinnerNotification] = useState(false);
+  const [hasFinished, setHasFinished] = useState(false);
 
   // Function to restart the race
   const restartRace = () => {
@@ -84,6 +90,11 @@ const CanvasGame = ({ playerName }) => {
         setPlayers(prev => ({ ...prev, [myId]: updatedMe }));
         socket.emit('update-position', updatedMe);
       }
+      
+      // Reset race status
+      setRaceWinner(null);
+      setHasFinished(false);
+      setShowWinnerNotification(false);
       
       // Emit restart race event to reset all players
       socket.emit('restart-race');
@@ -109,6 +120,50 @@ const CanvasGame = ({ playerName }) => {
       socket.emit('set-name', playerName);
     }
 
+    // If user selected to enter as host, automatically request to become host
+    // when we receive our ID from the server
+    const autoRequestHostStatus = (id) => {
+      if (isHost && id) {
+        console.log("Auto-requesting host status as user selected 'Enter as Host'");
+        safeEmit('become-host', {}, (response) => {
+          console.log("Host status response:", response);
+          
+          // Ensure host player is added to the players state if not already there
+          if (response.success) {
+            setPlayers(prev => {
+              // If the host player isn't in the state yet, add them
+              if (!prev[id]) {
+                console.log(`Adding host player ${id} to state`);
+                return {
+                  ...prev,
+                  [id]: { x: 0, y: 0, name: playerName, isJumping: false }
+                };
+              }
+              return prev;
+            });
+          }
+        });
+      }
+    };
+
+    // Listen for race distance updates
+    socket.on('game-settings-updated', ({ raceDistance: newDistance }) => {
+      console.log(`Race distance updated to ${newDistance}m`);
+      setRaceDistance(newDistance);
+      // Reset race status when distance changes
+      setRaceWinner(null);
+      setHasFinished(false);
+      setShowWinnerNotification(false);
+    });
+
+    // Listen for winner announcements
+    socket.on('race-winner', ({ playerId, playerName }) => {
+      console.log(`Race winner: ${playerName} (${playerId})`);
+      setRaceWinner({ id: playerId, name: playerName });
+      setShowWinnerNotification(true);
+      setTimeout(() => setShowWinnerNotification(false), 5000);
+    });
+
     // Listen for restart race event
     socket.on('restart-race', () => {
       // Reset all players positions
@@ -127,6 +182,11 @@ const CanvasGame = ({ playerName }) => {
         return updated;
       });
       
+      // Reset race status
+      setRaceWinner(null);
+      setHasFinished(false);
+      setShowWinnerNotification(false);
+      
       // Show restart notification for players who received the event
       setShowRestartNotification(true);
       setTimeout(() => setShowRestartNotification(false), 3000);
@@ -135,7 +195,19 @@ const CanvasGame = ({ playerName }) => {
     socket.on('init', ({ id, players, trees: serverTrees, obstacles: serverObstacles }) => {
       console.log(`Init received with ID: ${id}, players:`, players);
       setMyId(id);
-      setPlayers(players);
+      
+      // IMPORTANT: Merge instead of replacing players to avoid losing existing players
+      setPlayers(prev => {
+        const merged = { ...prev, ...players };
+        // Make sure we always have our own player in the state
+        if (id && !merged[id] && playerName) {
+          merged[id] = { x: 0, y: 0, name: playerName, isJumping: false };
+        }
+        return merged;
+      });
+
+      // Request host status if user selected to enter as host
+      autoRequestHostStatus(id);
 
       if (players[id]) {
         lastPosRef.current = players[id].x;
@@ -179,15 +251,25 @@ const CanvasGame = ({ playerName }) => {
 
     socket.on('new-player', ({ id, name, x, y }) => {
       console.log(`New player joined: ${id}, Name: ${name}, Current players:`, players);
-      setPlayers(prev => ({
-        ...prev,
-        [id]: { 
-          x: x || 0, 
-          y: y || groundY, 
-          name: name || `Player-${id.substring(0, 5)}`, 
-          isJumping: false 
+      setPlayers(prev => {
+        // Add the new player data to the players state
+        const updated = {
+          ...prev,
+          [id]: { 
+            x: x || 0, 
+            y: y || groundY, 
+            name: name || `Player-${id.substring(0, 5)}`, 
+            isJumping: false 
+          }
+        };
+        
+        // Special case: if this is our own ID and we were missing from state
+        if (id === myId && !prev[myId]) {
+          console.log(`This is my ID (${id}) and I was missing from state, adding myself back`);
         }
-      }));
+        
+        return updated;
+      });
     });
 
     socket.on('player-moved', ({ id, x, y, name }) => {
@@ -253,33 +335,46 @@ const CanvasGame = ({ playerName }) => {
         let updated = { ...me };
         let isCurrentlyMoving = false;
 
-        if (pressedKeys.current['ArrowRight']) {
-          // Add boundary check for right movement
-          const newX = Math.min(updated.x + 5, maxX);
-          updated.x = newX;
-          isCurrentlyMoving = true;
-        }
-
-        if (pressedKeys.current['ArrowUp'] && !updated.isJumping) {
-          velocityY.current = -15;
-          updated.isJumping = true;
-          isCurrentlyMoving = true;
-        }
-
-        if (updated.isJumping) {
-          velocityY.current += gravity;
-          // Apply velocity with boundary check for Y position
-          updated.y = Math.min(Math.max(updated.y - velocityY.current, groundY), maxY);
-          isCurrentlyMoving = true;
-
-          if (updated.y <= groundY) {
-            updated.y = groundY;
-            updated.isJumping = false;
-            velocityY.current = 0;
-
-            // Only consider moving if still pressing right arrow
-            isCurrentlyMoving = pressedKeys.current['ArrowRight'];
+        // Don't allow movement if the player has finished the race
+        if (!hasFinished) {
+          if (pressedKeys.current['ArrowRight']) {
+            // Add boundary check for right movement
+            const newX = Math.min(updated.x + 5, maxX);
+            updated.x = newX;
+            isCurrentlyMoving = true;
           }
+
+          if (pressedKeys.current['ArrowUp'] && !updated.isJumping) {
+            velocityY.current = -15;
+            updated.isJumping = true;
+            isCurrentlyMoving = true;
+          }
+
+          if (updated.isJumping) {
+            velocityY.current += gravity;
+            // Apply velocity with boundary check for Y position
+            updated.y = Math.min(Math.max(updated.y - velocityY.current, groundY), maxY);
+            isCurrentlyMoving = true;
+
+            if (updated.y <= groundY) {
+              updated.y = groundY;
+              updated.isJumping = false;
+              velocityY.current = 0;
+
+              // Only consider moving if still pressing right arrow
+              isCurrentlyMoving = pressedKeys.current['ArrowRight'];
+            }
+          }
+
+          // Check if player has crossed the finish line
+          if (updated.x >= raceDistance && !hasFinished) {
+            setHasFinished(true);
+            // Notify the server that this player has finished
+            socket.emit('player-finished', { playerName: updated.name || 'Unknown Player' });
+          }
+        } else {
+          // Player has finished - no more movement
+          isCurrentlyMoving = false;
         }
 
         // Update the movement state if needed
@@ -296,6 +391,18 @@ const CanvasGame = ({ playerName }) => {
       });
     }, 30);
 
+    // Add special debug button to console log all players 
+    window.debugPlayers = () => {
+      console.log("All players in state:", players);
+      console.log("My ID:", myId);
+      console.log("Visible players:", Array.from(visiblePlayers));
+      return {
+        players,
+        myId,
+        visiblePlayers: Array.from(visiblePlayers)
+      };
+    };
+
     return () => {
       clearInterval(interval);
       window.removeEventListener('keydown', handleKeyDown);
@@ -309,8 +416,10 @@ const CanvasGame = ({ playerName }) => {
       socket.off('player-joined');
       socket.off('request-accepted');
       socket.off('request-rejected');
+      socket.off('game-settings-updated');
+      socket.off('race-winner');
     };
-  }, [myId, playerName]);
+  }, [myId, playerName, raceDistance, hasFinished, isHost]);
 
   useEffect(() => {
     const ctx = canvasRef.current.getContext('2d');
@@ -437,12 +546,54 @@ const CanvasGame = ({ playerName }) => {
         }
       }
 
+      // Draw the finish line
+      const finishLineX = raceDistance - cameraOffset;
+      // Only draw if in view
+      if (finishLineX >= -10 && finishLineX <= 810) {
+        // Checkered pattern for finish line
+        ctx.save();
+        
+        // Draw the finish line pole
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(finishLineX - 5, roadY - 150, 10, 150);
+        
+        // Draw the finish banner
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(finishLineX - 5, roadY - 150, 200, 40);
+        
+        // Draw the FINISH text
+        ctx.font = 'bold 30px Arial';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText('FINISH', finishLineX + 10, roadY - 120);
+        
+        // Draw checkered pattern on the road
+        const squareSize = 15;
+        const checkerWidth = 60;
+        for (let i = 0; i < checkerWidth / squareSize; i++) {
+          for (let j = 0; j < 6; j++) {
+            if ((i + j) % 2 === 0) {
+              ctx.fillStyle = '#FFFFFF';
+            } else {
+              ctx.fillStyle = '#000000';
+            }
+            ctx.fillRect(
+              finishLineX + (i * squareSize) - checkerWidth / 2, 
+              roadY - 3 + (j * squareSize), 
+              squareSize, 
+              squareSize
+            );
+          }
+        }
+        
+        ctx.restore();
+      }
+
       // We no longer draw players on the canvas because we're using absolute positioned divs
     };
 
     const interval = setInterval(draw, 1000 / 60);
     return () => clearInterval(interval);
-  }, [players, trees, obstacles, myId]);
+  }, [players, trees, obstacles, myId, raceDistance]);
 
   // Inject the animation styles when component mounts
   useEffect(() => {
@@ -496,6 +647,37 @@ const CanvasGame = ({ playerName }) => {
               Restart Race
             </button>
           </div>
+          
+          {/* Refresh Players button */}
+          <div className="absolute top-36 right-4">
+            <button 
+              onClick={() => {
+                // Force re-render of myself if I'm missing from players
+                if (myId && !players[myId] && playerName) {
+                  const newPlayer = { x: 0, y: 0, name: playerName, isJumping: false };
+                  console.log("Force adding myself back to players:", newPlayer);
+                  setPlayers(prev => ({...prev, [myId]: newPlayer}));
+                  
+                  // Re-emit my position to ensure others can see me
+                  socket.emit('update-position', newPlayer);
+                }
+                
+                // If I'm a host, request host status info again
+                if (isHost && myId) {
+                  console.log("Re-requesting host status...");
+                  safeEmit('become-host', {}, (response) => {
+                    console.log("Host status re-request response:", response);
+                  });
+                }
+              }}
+              className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-4 py-2 rounded-lg shadow-lg hover:from-blue-600 hover:to-indigo-600 transform hover:scale-105 transition duration-300 flex items-center"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh Players
+            </button>
+          </div>
 
           {/* Game controls overlay */}
           <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg p-3 text-white text-xs border border-indigo-600">
@@ -535,6 +717,20 @@ const CanvasGame = ({ playerName }) => {
             </div>
           </div>
 
+          {/* Race winner notification */}
+          {showWinnerNotification && raceWinner && (
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-8 py-6 rounded-lg z-50 shadow-lg border-2 border-yellow-500">
+              <div className="flex items-center justify-center space-x-2 text-3xl font-bold mb-4">
+                <svg className="w-10 h-10 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                  <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-400">WINNER!</span>
+              </div>
+              <div className="text-center text-xl font-bold mb-2">{raceWinner.name}</div>
+              <p className="text-center text-yellow-200 text-sm">First to reach the finish line!</p>
+            </div>
+          )}
+
           {/* Race restart notification */}
           {showRestartNotification && (
             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-6 py-4 rounded-lg z-50 animate-bounce shadow-lg border-2 border-yellow-500">
@@ -550,69 +746,84 @@ const CanvasGame = ({ playerName }) => {
 
           {/* Overlay the stickman gifs on top of the canvas */}
           {Object.entries(players).map(([id, player]) => {
-            // For debugging, always render all players without visiblePlayers check
-            console.log(`Rendering player ${id}, visible: ${visiblePlayers.has(id)}, player:`, player);
+            // Always render all players regardless of visiblePlayers status
+            const playerVisible = visiblePlayers.has(id);
+            console.log(`Rendering player ${id}, name: ${player.name}, visible: ${playerVisible}, isMyId: ${id === myId}`);
             
-            // DEBUG: Temporarily ignore visiblePlayers check to see if data is correct
-            // if (visiblePlayers.has(id)) {
-              const me = players[myId];
-              const cameraOffset = me ? me.x - fixedPlayerX : 0;
-              const drawX = id === myId ? fixedPlayerX : player.x - cameraOffset;
-              const roadY = 400;
+            const me = players[myId];
+            const cameraOffset = me ? me.x - fixedPlayerX : 0;
+            const drawX = id === myId ? fixedPlayerX : player.x - cameraOffset;
+            const roadY = 400;
 
-              // Only animate the local player, other players always use static image
-              const playerMoving = id === myId ? isMoving : false;
+            // Only animate the local player, other players always use static image
+            const playerMoving = id === myId ? isMoving : false;
 
-              // Ensure player stays within canvas boundaries for display
-              const constrainedX = Math.max(0, Math.min(drawX, 770)); // 800 - player width (30px)
-              const constrainedY = Math.max(0, Math.min(roadY - 60 - player.y, 540)); // 600 - player height (60px)
+            // Ensure player stays within canvas boundaries for display
+            const constrainedX = Math.max(0, Math.min(drawX, 770)); // 800 - player width (30px)
+            const constrainedY = Math.max(0, Math.min(roadY - 60 - player.y, 540)); // 600 - player height (60px)
 
-              // Create a more reliable animation approach
-              const getPlayerStyle = () => {
-                const baseStyle = {
-                  position: 'absolute',
-                  left: `${constrainedX}px`,
-                  top: `${constrainedY}px`,
-                  width: '30px', // Increased from 20px to 30px
-                  height: '60px', // Increased from 40px to 60px
-                  zIndex: 10,
-                  overflow: 'visible' // Ensure image isn't clipped
-                };
-                
-                return baseStyle;
+            // Create a more reliable animation approach
+            const getPlayerStyle = () => {
+              const baseStyle = {
+                position: 'absolute',
+                left: `${constrainedX}px`,
+                top: `${constrainedY}px`,
+                width: '30px', // Increased from 20px to 30px
+                height: '60px', // Increased from 40px to 60px
+                zIndex: 10,
+                overflow: 'visible' // Ensure image isn't clipped
               };
               
-              return (
-                <div
-                  key={id}
-                  style={getPlayerStyle()}
-                >
-                  {/* Player name tag with better styling */}
-                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap px-2 py-1 bg-black bg-opacity-70 rounded-md text-xs text-white border border-indigo-400 pulse-border">
-                    {player.name || formatDisplayId(id)}
-                  </div>
-                  
-                  {/* Only render one image at a time */}
-                  <img
-                    key={`stickman-${id}-${playerMoving}`} // Force re-render when animation state changes
-                    src={playerMoving ? stickmanGif : stickmanStill}
-                    alt="stickman"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'contain', // Changed from 'cover' to 'contain'
-                      objectPosition: 'center',
-                      display: 'block'
-                    }}
-                  />
+              return baseStyle;
+            };
+            
+            return (
+              <div
+                key={id}
+                style={getPlayerStyle()}
+                onClick={() => console.log(`Clicked on player: ${id}, name: ${player.name}`)}
+              >
+                {/* Player name tag with better styling */}
+                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap px-2 py-1 bg-black bg-opacity-70 rounded-md text-xs text-white border border-indigo-400 pulse-border">
+                  {id === myId ? `${player.name || formatDisplayId(id)} (YOU)` : (player.name || formatDisplayId(id))}
                 </div>
-              );
-            // }
-            // return null;
+                
+                {/* Only render one image at a time */}
+                <img
+                  key={`stickman-${id}-${playerMoving}`} // Force re-render when animation state changes
+                  src={playerMoving ? stickmanGif : stickmanStill}
+                  alt="stickman"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain', // Changed from 'cover' to 'contain'
+                    objectPosition: 'center',
+                    display: 'block'
+                  }}
+                />
+              </div>
+            );
           })}
+
+          {/* DEBUG: Always visible own player if not in players list */}
+          {myId && !players[myId] && (
+            <div 
+              className="absolute bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg"
+              onClick={() => {
+                console.log("Missing player! Current state:", { 
+                  myId, 
+                  players: Object.keys(players),
+                  visiblePlayers: Array.from(visiblePlayers)
+                });
+              }}
+            >
+              Player Missing! Click to debug
+            </div>
+          )}
         </div>
       </div>
       {myId && <AddPlayerById myId={myId} />}
+      {myId && <GameSettings myId={myId} />}
     </div>
   );
 };

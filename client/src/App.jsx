@@ -5,6 +5,12 @@ import EnterName from './components/EnterName';
 
 function App() {
   const [playerName, setPlayerName] = useState(null);
+  const [isHost, setIsHost] = useState(false);
+
+  const handleStartGame = (name, asHost) => {
+    setPlayerName(name);
+    setIsHost(asHost);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-900 via-indigo-800 to-purple-900 text-white">
@@ -13,9 +19,9 @@ function App() {
           Stickman Racing
         </h1>
         {!playerName ? (
-          <EnterName onStart={(name) => setPlayerName(name)} />
+          <EnterName onStart={handleStartGame} />
         ) : (
-          <CanvasGame playerName={playerName} />
+          <CanvasGame playerName={playerName} isHost={isHost} />
         )}
       </div>
     </div>
