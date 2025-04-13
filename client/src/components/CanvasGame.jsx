@@ -294,13 +294,73 @@ const CanvasGame = ({ playerName }) => {
       {myId && <PlayerIdDisplay playerId={myId} />}
       <div className="flex justify-center mt-12">
         <div className="relative">
-          <canvas
-            ref={canvasRef}
-            width={800}
-            height={600}
-            className="border-2 border-black bg-white"
-            style={{ boxShadow: 'inset 0 0 20px 10px rgba(0, 0, 0, 0.5)' }}
-          />
+          {/* Game Title Banner */}
+          <div className="absolute -top-12 left-0 right-0 flex justify-center">
+            <div className="bg-gradient-to-r from-purple-800 to-indigo-900 text-white px-6 py-2 rounded-t-xl shadow-lg border-t-2 border-l-2 border-r-2 border-indigo-500 transform -skew-x-6">
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-400 font-extrabold text-xl tracking-wider">STICK MAN RACING</span>
+            </div>
+          </div>
+
+          {/* Game frame with animated border */}
+          <div className="p-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 rounded-xl animate-gradient-x">
+            <canvas
+              ref={canvasRef}
+              width={800}
+              height={600}
+              className="rounded-lg bg-white"
+              style={{ 
+                boxShadow: 'inset 0 0 20px 10px rgba(0, 0, 0, 0.3)',
+                borderRadius: '8px',
+                overflow: 'hidden' 
+              }}
+            />
+          </div>
+
+          {/* Score/Distance Display */}
+          <div className="absolute top-4 right-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg py-2 px-4 text-white border border-indigo-500">
+            <div className="text-sm font-bold text-yellow-300">Distance</div>
+            <div className="font-mono text-2xl text-white" id="score">
+              {players[myId] ? Math.floor(players[myId].x / 10) : 0} m
+            </div>
+          </div>
+
+          {/* Game controls overlay */}
+          <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg p-3 text-white text-xs border border-indigo-600">
+            <div className="flex items-center space-x-2 mb-1">
+              <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+              </svg>
+              <span className="font-bold text-indigo-300">CONTROLS:</span>
+            </div>
+            <div className="ml-6 space-y-1">
+              <div className="flex items-center space-x-2">
+                <div className="bg-gray-700 px-2 py-1 rounded text-yellow-300 font-semibold">→</div>
+                <span>Run forward</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="bg-gray-700 px-2 py-1 rounded text-yellow-300 font-semibold">↑</div>
+                <span>Jump</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Player info panel */}
+          <div className="absolute top-4 left-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg p-3 text-white text-xs border border-indigo-600">
+            <div className="flex items-center space-x-2 mb-1">
+              <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span className="font-bold text-indigo-300">PLAYER:</span>
+              <span className="text-white">{players[myId]?.name || 'Player'}</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <span className="font-bold text-indigo-300">PLAYERS:</span>
+              <span className="text-white">{Object.keys(players).length}</span>
+            </div>
+          </div>
 
           {/* Overlay the stickman gifs on top of the canvas */}
           {Object.entries(players).map(([id, player]) => {
@@ -337,6 +397,11 @@ const CanvasGame = ({ playerName }) => {
                   key={id}
                   style={getPlayerStyle()}
                 >
+                  {/* Player name tag with better styling */}
+                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap px-2 py-1 bg-black bg-opacity-70 rounded-md text-xs text-white border border-indigo-400 pulse-border">
+                    {player.name || 'Player'}
+                  </div>
+                  
                   {/* Only render one image at a time */}
                   <img
                     key={`stickman-${id}-${playerMoving}`} // Force re-render when animation state changes
@@ -350,9 +415,6 @@ const CanvasGame = ({ playerName }) => {
                       display: 'block'
                     }}
                   />
-                  <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs whitespace-nowrap">
-                    {player.name || 'Player'}
-                  </div>
                 </div>
               );
             }
