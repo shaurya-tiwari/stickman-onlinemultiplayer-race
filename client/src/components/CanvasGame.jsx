@@ -161,18 +161,25 @@ const CanvasGame = ({ playerName }) => {
       }
     });
 
-    socket.on('new-player', ({ id, name }) => {
+    socket.on('new-player', ({ id, name, x, y }) => {
+      console.log(`New player joined: ${id}, Name: ${name}`);
       setPlayers(prev => ({
         ...prev,
-        [id]: { x: 0, y: groundY, name, isJumping: false }
+        [id]: { 
+          x: x || 0, 
+          y: y || groundY, 
+          name: name || `Player-${id.substring(0, 5)}`, 
+          isJumping: false 
+        }
       }));
     });
 
-    socket.on('player-moved', ({ id, x, y }) => {
+    socket.on('player-moved', ({ id, x, y, name }) => {
       setPlayers(prev => {
         const existing = prev[id] || {};
-        // Remove player movement tracking for animation
-        return { ...prev, [id]: { ...existing, x, y } };
+        // Keep the player's name when updating position or use the name from the server
+        const playerName = name || existing.name || `Player-${id.substring(0, 5)}`;
+        return { ...prev, [id]: { ...existing, x, y, name: playerName } };
       });
     });
 
@@ -182,6 +189,21 @@ const CanvasGame = ({ playerName }) => {
         delete updated[id];
         return updated;
       });
+    });
+
+    // Handle request acceptance
+    socket.on('accept-join-request', ({ playerId }) => {
+      // Make sure both players exist
+      if (!players[socket.id] || !players[playerId]) return;
+      
+      // Add the joining player with the correct name
+      if (players[playerId]) {
+        const playerName = players[playerId].name;
+        setPlayers(prev => ({
+          ...prev,
+          [playerId]: { ...prev[playerId], name: playerName }
+        }));
+      }
     });
 
     const handleKeyDown = e => {
@@ -274,32 +296,95 @@ const CanvasGame = ({ playerName }) => {
       const cameraOffset = me ? me.x - fixedPlayerX : 0;
       const roadY = 400;
 
-      // Draw a plain white background
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 800, 600);
+      // Draw a gradient sky background
+      const skyGradient = ctx.createLinearGradient(0, 0, 0, roadY);
+      skyGradient.addColorStop(0, '#87CEEB'); // Sky blue at top
+      skyGradient.addColorStop(0.7, '#B0E2FF'); // Lighter blue toward horizon
+      skyGradient.addColorStop(1, '#E6F0FF'); // Almost white at horizon
+      ctx.fillStyle = skyGradient;
+      ctx.fillRect(0, 0, 800, roadY);
+
+      // Draw some distant clouds for depth
+      const drawCloud = (x, y, size) => {
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.arc(x + size * 0.5, y - size * 0.2, size * 0.7, 0, Math.PI * 2);
+        ctx.arc(x + size, y, size * 0.8, 0, Math.PI * 2);
+        ctx.arc(x + size * 1.5, y, size * 0.7, 0, Math.PI * 2);
+        ctx.arc(x + size * 0.8, y + size * 0.3, size * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      };
+
+      // Draw a few clouds with parallax effect (move slower than foreground)
+      const parallaxFactor = 0.2;
+      drawCloud(100 - cameraOffset * parallaxFactor, 100, 30);
+      drawCloud(350 - cameraOffset * parallaxFactor, 150, 25);
+      drawCloud(600 - cameraOffset * parallaxFactor, 80, 35);
+      drawCloud(750 - cameraOffset * parallaxFactor, 180, 20);
 
       // Draw game boundaries - visible border to show play area
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 2;
       ctx.strokeRect(0, 0, 800, 600);
 
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, roadY, 800, 3);
+      // Draw a nicer ground/road with gradient
+      const roadGradient = ctx.createLinearGradient(0, roadY - 15, 0, roadY + 15);
+      roadGradient.addColorStop(0, '#888888');
+      roadGradient.addColorStop(0.5, '#555555');
+      roadGradient.addColorStop(1, '#333333');
+      ctx.fillStyle = roadGradient;
+      ctx.fillRect(0, roadY, 800, 15);
 
+      // Draw grass below the road
+      ctx.fillStyle = '#4d8c57';
+      ctx.fillRect(0, roadY + 15, 800, 600 - roadY - 15);
+
+      // Draw trees with improved sizing and shadows
       trees.forEach(({ x, image }) => {
         const drawX = x - cameraOffset;
-        ctx.drawImage(image, drawX + 40, roadY - 200, 160, 200);
+        // Only draw trees that are visible on screen (plus a small buffer)
+        if (drawX > -200 && drawX < 1000) {
+          // Tree shadow
+          ctx.save();
+          ctx.globalAlpha = 0.4;
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+          ctx.beginPath();
+          ctx.ellipse(drawX + 120, roadY + 10, 60, 15, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          
+          // Tree image - larger and with better positioning
+          ctx.drawImage(image, drawX + 40, roadY - 280, 200, 280);
+        }
       });
 
+      // Draw obstacles with improved sizing, shadows and effects
       obstacles.forEach(({ x, image }) => {
         const drawX = x - cameraOffset;
-        ctx.drawImage(image, drawX, roadY - 40, 40, 40);
+        // Only draw obstacles that are visible on screen (plus a small buffer)
+        if (drawX > -60 && drawX < 860) {
+          // Obstacle shadow
+          ctx.save();
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+          ctx.beginPath();
+          ctx.ellipse(drawX + 30, roadY + 8, 25, 8, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          
+          // Obstacle image - larger and with better positioning
+          ctx.drawImage(image, drawX, roadY - 60, 60, 60);
+        }
       });
 
       if (me && !me.isJumping) {
         obstacles.forEach(ob => {
           const obsStart = ob.x;
-          const obsEnd = ob.x + 40;
+          // Update the collision detection to match the new obstacle size
+          const obsEnd = ob.x + 60; // Updated from 40 to 60
           const playerLeft = me.x;
           const playerRight = me.x + 30;
           
@@ -475,7 +560,7 @@ const CanvasGame = ({ playerName }) => {
                 >
                   {/* Player name tag with better styling */}
                   <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap px-2 py-1 bg-black bg-opacity-70 rounded-md text-xs text-white border border-indigo-400 pulse-border">
-                    {player.name || 'Player'}
+                    {player.name || id.substring(0, 5)}
                   </div>
                   
                   {/* Only render one image at a time */}

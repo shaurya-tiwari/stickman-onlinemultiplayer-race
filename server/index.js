@@ -129,7 +129,8 @@ io.on('connection', socket => {
           io.to(visibleToId).emit('player-moved', { 
             id: socket.id, 
             x: players[socket.id].x, 
-            y: players[socket.id].y 
+            y: players[socket.id].y,
+            name: players[socket.id].name
           });
         }
       });
