@@ -1,3 +1,7 @@
+# Stick Man Racing - Multiplayer Game
+
+A fun multiplayer racing game where stick figures compete to reach the finish line. Built with React, Vite, and Socket.io.
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
