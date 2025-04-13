@@ -1,9 +1,14 @@
 // client/src/socket.js
 import { io } from 'socket.io-client';
 
-// Create socket with isolated rooms
+// Create socket with isolated rooms and reconnection
 const socket = io('http://localhost:3001', {
   autoConnect: true, // Connect automatically
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  timeout: 20000,
   query: {
     isolation: 'true', // Flag to tell server we want isolation
     clientId: `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` // Generate unique client ID
@@ -13,6 +18,7 @@ const socket = io('http://localhost:3001', {
 // Track which players we can see (for client-side filtering)
 const visiblePlayers = new Set();
 let myPlayerId = null;
+let lastKnownPosition = { x: 0, y: 0 };
 
 // Add the current player to visible list when we get our ID
 socket.on('init', ({ id }) => {
@@ -21,6 +27,61 @@ socket.on('init', ({ id }) => {
     myPlayerId = id;
     visiblePlayers.add(id); // Always see ourselves
     console.log('Initialized visible players with self:', Array.from(visiblePlayers));
+    
+    // Store player ID in localStorage for potential reconnection
+    localStorage.setItem('playerId', id);
+  }
+});
+
+// Handle reconnection
+socket.on('connect', () => {
+  // Check if we were previously connected
+  const storedPlayerId = localStorage.getItem('playerId');
+  if (storedPlayerId && !myPlayerId) {
+    console.log(`Attempting to reconnect with stored player ID: ${storedPlayerId}`);
+    
+    // Restore the player ID 
+    myPlayerId = storedPlayerId;
+    
+    // Request race state update from server
+    socket.emit('reconnect-to-race', (response) => {
+      console.log('Reconnection response:', response);
+      
+      if (response.success) {
+        // Update visible players based on server response
+        visiblePlayers.clear();
+        visiblePlayers.add(myPlayerId); // Always see ourselves
+        
+        // Add all visible players from response
+        response.visiblePlayers.forEach(player => {
+          visiblePlayers.add(player.id);
+        });
+        
+        // Broadcast reconnection event for anyone listening
+        const reconnectEvent = new CustomEvent('player-reconnected', {
+          detail: {
+            playerId: myPlayerId, 
+            raceStatus: response.raceStatus,
+            visiblePlayers: response.visiblePlayers
+          }
+        });
+        window.dispatchEvent(reconnectEvent);
+      } else {
+        // Failed to reconnect with stored ID, clear it
+        localStorage.removeItem('playerId');
+        myPlayerId = null;
+        console.log('Failed to reconnect with stored player ID, will create new session');
+      }
+    });
+  }
+});
+
+// Track connection state
+socket.on('disconnect', () => {
+  console.log('Disconnected from server, will attempt to reconnect');
+  // Store last position for reconnection
+  if (myPlayerId) {
+    localStorage.setItem('lastPosition', JSON.stringify(lastKnownPosition));
   }
 });
 
@@ -37,38 +98,28 @@ socket.on('player-joined', ({ id }) => {
   console.log('Current visible players:', Array.from(visiblePlayers));
 });
 
-// Add functionality to receive new player data
-socket.on('new-player', ({ id, name, x, y }) => {
-  console.log(`Received new player data for ${id} (${name})`);
-  // When we get new player data, ensure they're added to visible players
+// Add functionality to handle when another player reconnects
+socket.on('player-reconnected', ({ id, name, x, y }) => {
+  console.log(`Player reconnected: ${name} (${id})`);
   visiblePlayers.add(id);
   
-  // Always make sure we're in our own visibility list
-  if (myPlayerId) {
-    visiblePlayers.add(myPlayerId);
-  }
-  
-  console.log('Current visible players after new-player:', Array.from(visiblePlayers));
+  // Broadcast reconnection event for game component to update player position
+  const playerReconnectedEvent = new CustomEvent('other-player-reconnected', {
+    detail: { id, name, x, y }
+  });
+  window.dispatchEvent(playerReconnectedEvent);
 });
 
-// Remove players when they disconnect
-socket.on('player-disconnected', ({ id }) => {
-  console.log(`Player disconnected: ${id}`);
-  visiblePlayers.delete(id);
-  
-  // Always make sure we're in our own visibility list
-  if (myPlayerId) {
-    visiblePlayers.add(myPlayerId);
+// Modified: Update position tracking function
+const updatePosition = (position) => {
+  if (position) {
+    lastKnownPosition = { ...position };
   }
-  
-  console.log('Current visible players after disconnect:', Array.from(visiblePlayers));
-});
+};
 
 // Add helpers to check if a player should be visible
 const isPlayerVisible = (playerId) => {
-  // Always return true for now to ensure all players are visible
-  return true;
-  // Original check: return visiblePlayers.has(playerId);
+  return visiblePlayers.has(playerId);
 };
 
 // Format a player ID for display (XXX-XXX-XXXX)
@@ -104,6 +155,11 @@ const safeEmit = (event, data, callback) => {
     processedData.targetId = cleanId(processedData.targetId);
   }
   
+  // If this is a position update, track it locally too
+  if (event === 'update-position') {
+    updatePosition(processedData);
+  }
+  
   console.log(`Emitting ${event} with data:`, processedData);
   socket.emit(event, processedData, callback);
 };
@@ -116,4 +172,14 @@ const logVisiblePlayers = () => {
 
 // Export both the socket and helper functions
 export default socket;
-export { isPlayerVisible, visiblePlayers, formatDisplayId, cleanId, safeEmit, logVisiblePlayers, myPlayerId };
+export { 
+  isPlayerVisible, 
+  visiblePlayers, 
+  formatDisplayId, 
+  cleanId, 
+  safeEmit, 
+  logVisiblePlayers, 
+  myPlayerId,
+  updatePosition,
+  lastKnownPosition
+};

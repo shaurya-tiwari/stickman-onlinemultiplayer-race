@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import PlayerIdDisplay from './PlayerIdDisplay';
 import AddPlayerById from './AddPlayerById';
 import GameSettings from './GameSettings';
-import socket, { isPlayerVisible, visiblePlayers, safeEmit } from '../socket';
+import socket, { 
+  isPlayerVisible, 
+  visiblePlayers, 
+  safeEmit, 
+  updatePosition, 
+  lastKnownPosition 
+} from '../socket';
 
 // Tree Images
 import tree from '../assets/tree.png';
@@ -78,6 +84,13 @@ const CanvasGame = ({ playerName, isHost }) => {
   const [raceWinner, setRaceWinner] = useState(null);
   const [showWinnerNotification, setShowWinnerNotification] = useState(false);
   const [hasFinished, setHasFinished] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const reconnectionAttempts = useRef(0);
+  const [lastServerPosition, setLastServerPosition] = useState(null);
+  const [raceStatus, setRaceStatus] = useState({
+    isActive: false,
+    distance: 1000
+  });
 
   // Function to restart the race
   const restartRace = () => {
@@ -113,6 +126,37 @@ const CanvasGame = ({ playerName, isHost }) => {
       return `${idStr.substring(0, 3)}-${idStr.substring(3, 6)}-${idStr.substring(6, 10)}`;
     }
     return id;
+  };
+
+  // Add a validation function for finishing the race
+  const validateRaceFinish = (x) => {
+    // If already finished, no need to validate again
+    if (hasFinished) return false;
+    
+    // Check if player has actually reached the finish line
+    if (x >= raceDistance) {
+      // Prevent cheating by large position jumps
+      const lastPosValue = lastPosRef.current || 0;
+      const maxJump = 20; // Maximum allowed jump in position between updates
+      
+      // If the jump is too large, it might be cheating
+      if (x - lastPosValue > maxJump) {
+        console.warn(`Suspicious finish: Jumped from ${lastPosValue} to ${x}`);
+        // Don't count this as a finish, reset to last valid position
+        return false;
+      }
+      
+      setHasFinished(true);
+      // Notify the server that this player has finished with validated position
+      socket.emit('player-finished', { 
+        playerName: players[myId]?.name || 'Unknown Player',
+        position: x
+      });
+      
+      return true;
+    }
+    
+    return false;
   };
 
   useEffect(() => {
@@ -328,6 +372,7 @@ const CanvasGame = ({ playerName, isHost }) => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
+    // Update the position update handler to use our more robust validation
     const interval = setInterval(() => {
       setPlayers(prev => {
         const me = prev[myId];
@@ -338,8 +383,14 @@ const CanvasGame = ({ playerName, isHost }) => {
         // Don't allow movement if the player has finished the race
         if (!hasFinished) {
           if (pressedKeys.current['ArrowRight']) {
+            // Calculate the new position
+            let newX = updated.x + 5;
+            
+            // Track the last position for validation
+            lastPosRef.current = updated.x;
+            
             // Add boundary check for right movement
-            const newX = Math.min(updated.x + 5, maxX);
+            newX = Math.min(newX, maxX);
             updated.x = newX;
             isCurrentlyMoving = true;
           }
@@ -366,11 +417,9 @@ const CanvasGame = ({ playerName, isHost }) => {
             }
           }
 
-          // Check if player has crossed the finish line
+          // Check if player has crossed the finish line with validation
           if (updated.x >= raceDistance && !hasFinished) {
-            setHasFinished(true);
-            // Notify the server that this player has finished
-            socket.emit('player-finished', { playerName: updated.name || 'Unknown Player' });
+            validateRaceFinish(updated.x);
           }
         } else {
           // Player has finished - no more movement
@@ -383,6 +432,10 @@ const CanvasGame = ({ playerName, isHost }) => {
         }
 
         if (updated.x !== me.x || updated.y !== me.y) {
+          // Store position for client-side tracking
+          updatePosition(updated);
+          
+          // Send position update to server
           socket.emit('update-position', updated);
           return { ...prev, [myId]: updated };
         }
@@ -403,6 +456,110 @@ const CanvasGame = ({ playerName, isHost }) => {
       };
     };
 
+    // Add reconnection handler
+    const handleReconnection = (event) => {
+      console.log('Handling reconnection:', event.detail);
+      setIsReconnecting(false);
+      
+      const { playerId, raceStatus, visiblePlayers: reconnectedPlayers } = event.detail;
+      
+      // Update race status
+      setRaceDistance(raceStatus.raceDistance || 1000);
+      setRaceStatus({
+        isActive: raceStatus.isActive,
+        distance: raceStatus.raceDistance
+      });
+      
+      // Update race winner if there is one
+      if (raceStatus.raceWinner) {
+        setRaceWinner(raceStatus.raceWinner);
+        setHasFinished(raceStatus.raceWinner.id === myId);
+      }
+      
+      // Update players with their last known positions
+      setPlayers(prev => {
+        const updated = { ...prev };
+        reconnectedPlayers.forEach(player => {
+          updated[player.id] = {
+            name: player.name,
+            x: player.x,
+            y: player.y,
+            isJumping: player.isJumping
+          };
+        });
+        return updated;
+      });
+      
+      // If we were the winner or already finished, keep that state
+      if (raceStatus.raceFinished && raceStatus.raceWinner?.id === myId) {
+        setHasFinished(true);
+      }
+    };
+    
+    // Listen for other players reconnecting
+    const handleOtherPlayerReconnection = (event) => {
+      const { id, name, x, y } = event.detail;
+      
+      // Update the reconnected player's position
+      setPlayers(prev => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          name,
+          x,
+          y,
+          isJumping: false
+        }
+      }));
+    };
+    
+    // Add event listeners
+    window.addEventListener('player-reconnected', handleReconnection);
+    window.addEventListener('other-player-reconnected', handleOtherPlayerReconnection);
+    
+    // Add listeners for connection status changes
+    socket.on('connect', () => {
+      // If we were previously reconnecting, we've now reconnected
+      if (isReconnecting) {
+        console.log('Reconnected to server!');
+        setIsReconnecting(false);
+        reconnectionAttempts.current = 0;
+      }
+    });
+    
+    socket.on('disconnect', () => {
+      console.log('Disconnected from server, attempting to reconnect...');
+      setIsReconnecting(true);
+      reconnectionAttempts.current += 1;
+    });
+    
+    // Track server validation of player position
+    socket.on('position-validated', ({ id, x, y }) => {
+      if (id === myId) {
+        // Server has validated our position
+        setLastServerPosition({ x, y });
+      }
+    });
+    
+    // Listen for server position corrections
+    socket.on('position-correction', ({ x, y }) => {
+      console.log(`Server position correction received: ${x}, ${y}`);
+      
+      // Update our position to match server's validated position
+      setPlayers(prev => {
+        if (prev[myId]) {
+          return {
+            ...prev,
+            [myId]: {
+              ...prev[myId],
+              x, y
+            }
+          };
+        }
+        return prev;
+      });
+    });
+
     return () => {
       clearInterval(interval);
       window.removeEventListener('keydown', handleKeyDown);
@@ -418,8 +575,14 @@ const CanvasGame = ({ playerName, isHost }) => {
       socket.off('request-rejected');
       socket.off('game-settings-updated');
       socket.off('race-winner');
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('position-validated');
+      socket.off('position-correction');
+      window.removeEventListener('player-reconnected', handleReconnection);
+      window.removeEventListener('other-player-reconnected', handleOtherPlayerReconnection);
     };
-  }, [myId, playerName, raceDistance, hasFinished, isHost]);
+  }, [myId, playerName, raceDistance, hasFinished, isHost, isReconnecting]);
 
   useEffect(() => {
     const ctx = canvasRef.current.getContext('2d');
@@ -741,6 +904,19 @@ const CanvasGame = ({ playerName, isHost }) => {
                 <span>Race Restarted!</span>
               </div>
               <p className="text-center mt-2 text-yellow-200">All players moved to starting line</p>
+            </div>
+          )}
+
+          {/* Reconnection indicator */}
+          {isReconnecting && (
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-6 py-4 rounded-lg z-50 animate-pulse shadow-lg border-2 border-red-500">
+              <div className="flex items-center justify-center space-x-2 text-xl font-bold">
+                <svg className="w-6 h-6 text-red-400 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Reconnecting to server...</span>
+              </div>
+              <p className="text-center mt-2 text-red-200">Attempt {reconnectionAttempts.current}</p>
             </div>
           )}
 
