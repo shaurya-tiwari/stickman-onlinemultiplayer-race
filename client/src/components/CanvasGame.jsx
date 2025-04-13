@@ -71,11 +71,56 @@ const CanvasGame = ({ playerName }) => {
   // Define game boundaries
   const maxX = 10000; // Maximum X position (adjust as needed for your game world)
   const maxY = 200;  // Maximum Y position for jumps
+  const [showRestartNotification, setShowRestartNotification] = useState(false);
+
+  // Function to restart the race
+  const restartRace = () => {
+    // Only the host can restart the race
+    if (myId) {
+      const me = players[myId];
+      if (me) {
+        // Reset my position
+        const updatedMe = { ...me, x: 0, y: groundY, isJumping: false };
+        setPlayers(prev => ({ ...prev, [myId]: updatedMe }));
+        socket.emit('update-position', updatedMe);
+      }
+      
+      // Emit restart race event to reset all players
+      socket.emit('restart-race');
+      
+      // Show restart notification
+      setShowRestartNotification(true);
+      setTimeout(() => setShowRestartNotification(false), 3000);
+    }
+  };
 
   useEffect(() => {
     if (playerName) {
       socket.emit('set-name', playerName);
     }
+
+    // Listen for restart race event
+    socket.on('restart-race', () => {
+      // Reset all players positions
+      setPlayers(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(playerId => {
+          if (playerId !== myId) { // Exclude myself as I've already updated my position
+            updated[playerId] = {
+              ...updated[playerId],
+              x: 0,
+              y: groundY,
+              isJumping: false
+            };
+          }
+        });
+        return updated;
+      });
+      
+      // Show restart notification for players who received the event
+      setShowRestartNotification(true);
+      setTimeout(() => setShowRestartNotification(false), 3000);
+    });
 
     socket.on('init', ({ id, players, trees: serverTrees, obstacles: serverObstacles }) => {
       setMyId(id);
@@ -212,6 +257,11 @@ const CanvasGame = ({ playerName }) => {
       clearInterval(interval);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      socket.off('init');
+      socket.off('new-player');
+      socket.off('player-moved');
+      socket.off('player-disconnected');
+      socket.off('restart-race');
     };
   }, [myId, playerName]);
 
@@ -324,6 +374,19 @@ const CanvasGame = ({ playerName }) => {
             </div>
           </div>
 
+          {/* Restart Race Button */}
+          <div className="absolute top-20 right-4">
+            <button 
+              onClick={restartRace}
+              className="bg-gradient-to-r from-red-500 to-orange-500 text-white px-4 py-2 rounded-lg shadow-lg hover:from-red-600 hover:to-orange-600 transform hover:scale-105 transition duration-300 flex items-center glow-pulse"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Restart Race
+            </button>
+          </div>
+
           {/* Game controls overlay */}
           <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg p-3 text-white text-xs border border-indigo-600">
             <div className="flex items-center space-x-2 mb-1">
@@ -361,6 +424,19 @@ const CanvasGame = ({ playerName }) => {
               <span className="text-white">{Object.keys(players).length}</span>
             </div>
           </div>
+
+          {/* Race restart notification */}
+          {showRestartNotification && (
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-6 py-4 rounded-lg z-50 animate-bounce shadow-lg border-2 border-yellow-500">
+              <div className="flex items-center justify-center space-x-2 text-2xl font-bold">
+                <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span>Race Restarted!</span>
+              </div>
+              <p className="text-center mt-2 text-yellow-200">All players moved to starting line</p>
+            </div>
+          )}
 
           {/* Overlay the stickman gifs on top of the canvas */}
           {Object.entries(players).map(([id, player]) => {

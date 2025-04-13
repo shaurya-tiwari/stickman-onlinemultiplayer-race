@@ -206,6 +206,18 @@ io.on('connection', socket => {
     io.to(playerId).emit('request-rejected');
   });
 
+  // Handle race restart
+  socket.on('restart-race', () => {
+    // Only broadcast to players who can see this player (the host)
+    if (playerVisibility[socket.id]) {
+      playerVisibility[socket.id].forEach(visibleToId => {
+        if (visibleToId !== socket.id) { // Don't send to self (the initiator)
+          io.to(visibleToId).emit('restart-race');
+        }
+      });
+    }
+  });
+
   // Disconnect handling
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
