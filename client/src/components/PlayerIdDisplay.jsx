@@ -21,15 +21,15 @@ const PlayerIdDisplay = ({ playerId }) => {
   };
   
   return (
-    <div className="fixed top-0 left-0 right-0 bg-gray-900 bg-opacity-85 backdrop-filter backdrop-blur-sm text-white py-3 px-4 shadow-lg z-10">
+    <div className="fixed top-0 left-0 right-0 bg-slate-900 bg-opacity-85 backdrop-filter backdrop-blur-lg text-white py-3 px-4 shadow-xl z-10">
       <div className="flex items-center justify-center flex-wrap gap-2">
-        <span className="text-sm font-medium text-blue-300">Your Player ID:</span>
-        <code className="bg-gray-800 px-3 py-1 rounded-md font-mono text-yellow-300 border border-gray-700">
+        <span className="text-sm font-medium text-purple-300">Your Player ID:</span>
+        <code className="bg-black bg-opacity-60 px-3 py-1 rounded-md font-mono text-amber-300 border border-purple-700">
           {formatPlayerId(playerId)}
         </code>
         <button 
           onClick={copyToClipboard}
-          className={`${copied ? 'bg-green-500' : 'bg-indigo-600'} text-white text-xs px-3 py-1.5 rounded-md hover:bg-indigo-700 transition-all duration-300 transform hover:scale-105 flex items-center`}
+          className={`${copied ? 'bg-green-500' : 'bg-gradient-to-r from-purple-600 to-pink-600'} text-white text-xs px-3 py-1.5 rounded-md hover:opacity-90 transition-all duration-300 transform hover:scale-105 flex items-center`}
         >
           {copied ? (
             <>
@@ -47,7 +47,7 @@ const PlayerIdDisplay = ({ playerId }) => {
             </>
           )}
         </button>
-        <span className="text-xs text-gray-300">Share this ID with friends to let them join your race!</span>
+        <span className="text-xs text-purple-200">Share this ID with friends to let them join your race!</span>
       </div>
     </div>
   );

@@ -21,10 +21,10 @@
 /* Pulse effect for player name tags */
 @keyframes pulse-border {
   0%, 100% {
-    border-color: rgba(129, 140, 248, 0.5);
+    border-color: rgba(168, 85, 247, 0.5);
   }
   50% {
-    border-color: rgba(99, 102, 241, 1);
+    border-color: rgba(217, 70, 239, 1);
   }
 }
 
@@ -44,4 +44,36 @@
 
 .glow-pulse {
   animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Floating animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Shine effect for buttons */
+@keyframes shine {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.shine-effect {
+  background-size: 200% auto;
+  animation: shine 3s linear infinite;
 }

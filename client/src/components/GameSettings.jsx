@@ -91,10 +91,10 @@ const GameSettings = ({ myId }) => {
     <div className="fixed top-20 left-6 z-20">
       {/* Host button/indicator */}
       <div 
-        className={`bg-gradient-to-r ${isHost ? 'from-yellow-500 to-amber-600' : 'from-blue-600 to-indigo-700'} text-white px-4 py-3 rounded-lg shadow-lg cursor-pointer transform hover:scale-105 transition duration-300 flex items-center`}
+        className={`bg-gradient-to-r ${isHost ? 'from-amber-500 to-orange-600' : 'from-purple-600 to-pink-700'} text-white px-4 py-3 rounded-xl shadow-xl cursor-pointer transform hover:scale-105 transition duration-300 flex items-center`}
         onClick={() => isHost ? setShowSettings(true) : handleBecomeHost()}
         style={{
-          boxShadow: isHost ? '0 0 15px rgba(245, 158, 11, 0.7)' : '0 0 15px rgba(79, 70, 229, 0.6)'
+          boxShadow: isHost ? '0 0 15px rgba(245, 158, 11, 0.7)' : '0 0 15px rgba(147, 51, 234, 0.6)'
         }}
       >
         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -104,8 +104,8 @@ const GameSettings = ({ myId }) => {
       </div>
 
       {/* Race distance indicator */}
-      <div className="mt-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg py-2 px-4 text-white border border-indigo-500">
-        <div className="text-sm font-bold text-yellow-300">Race Finish Line</div>
+      <div className="mt-4 bg-black bg-opacity-60 backdrop-filter backdrop-blur-lg rounded-xl py-2 px-4 text-white border border-purple-500 border-opacity-30">
+        <div className="text-sm font-bold text-amber-300">Race Finish Line</div>
         <div className="font-mono text-white">
           {raceDistance}m
         </div>
@@ -113,10 +113,10 @@ const GameSettings = ({ myId }) => {
 
       {/* Host settings popup */}
       {showSettings && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm flex items-center justify-center z-40">
-          <div className="bg-gray-900 bg-opacity-90 p-8 rounded-xl shadow-2xl w-96 border border-yellow-500 border-opacity-50 transform transition-all duration-300">
-            <h2 className="text-2xl font-bold mb-6 text-white flex items-center">
-              <svg className="w-6 h-6 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <div className="fixed inset-0 bg-black bg-opacity-70 backdrop-filter backdrop-blur-lg flex items-center justify-center z-40">
+          <div className="bg-slate-900 bg-opacity-90 p-8 rounded-2xl shadow-2xl w-96 border border-purple-500 border-opacity-50 transform transition-all duration-300">
+            <h2 className="text-2xl font-bold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-pink-500 flex items-center">
+              <svg className="w-6 h-6 mr-2 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
@@ -125,11 +125,11 @@ const GameSettings = ({ myId }) => {
             
             <form onSubmit={handleUpdateSettings}>
               <div className="relative mb-6">
-                <label className="text-yellow-300 text-sm font-medium mb-2 block">Race Distance</label>
+                <label className="text-amber-300 text-sm font-medium mb-2 block">Race Distance</label>
                 <select
                   value={raceDistance}
                   onChange={(e) => setRaceDistance(Number(e.target.value))}
-                  className="w-full bg-black bg-opacity-50 border-b-2 border-yellow-500 p-3 text-white focus:outline-none focus:border-orange-400 transition duration-300 rounded-md"
+                  className="w-full bg-black bg-opacity-50 border-b-2 border-purple-500 p-3 text-white focus:outline-none focus:border-amber-400 transition duration-300 rounded-md"
                 >
                   {distanceOptions.map(option => (
                     <option key={option.value} value={option.value}>
@@ -166,7 +166,7 @@ const GameSettings = ({ myId }) => {
                 <button
                   type="button"
                   onClick={() => setShowSettings(false)}
-                  className="flex-1 bg-gray-700 text-gray-200 px-4 py-3 rounded-lg hover:bg-gray-600 transition duration-300 flex items-center justify-center"
+                  className="flex-1 bg-slate-700 text-slate-200 px-4 py-3 rounded-xl hover:bg-slate-600 transition duration-300 flex items-center justify-center"
                 >
                   <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -175,7 +175,7 @@ const GameSettings = ({ myId }) => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-4 py-3 rounded-lg hover:from-yellow-600 hover:to-amber-700 transition duration-300 flex items-center justify-center"
+                  className="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 text-white px-4 py-3 rounded-xl hover:from-amber-600 hover:to-orange-700 transition duration-300 flex items-center justify-center"
                 >
                   <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

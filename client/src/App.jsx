@@ -13,9 +13,9 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-900 via-indigo-800 to-purple-900 text-white">
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-purple-900 to-slate-900 text-white">
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-center text-5xl font-bold p-4 mb-6 tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-red-400 to-pink-500 drop-shadow-lg">
+        <h1 className="text-center text-5xl font-bold p-4 mb-8 tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-pink-600 drop-shadow-xl">
           Stickman Racing
         </h1>
         {!playerName ? (

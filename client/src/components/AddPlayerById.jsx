@@ -128,9 +128,9 @@ const AddPlayerById = ({ myId }) => {
     <div className="fixed bottom-6 right-6 z-20">
       <button
         onClick={() => setShowPopup(true)}
-        className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-3 rounded-lg shadow-lg hover:from-indigo-700 hover:to-purple-700 transform hover:scale-105 transition duration-300 flex items-center animate-pulse"
+        className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-3 rounded-xl shadow-xl hover:opacity-90 transform hover:scale-105 transition duration-300 flex items-center animate-pulse"
         style={{
-          boxShadow: '0 0 15px rgba(79, 70, 229, 0.6)'
+          boxShadow: '0 0 15px rgba(147, 51, 234, 0.6)'
         }}
       >
         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -148,24 +148,24 @@ const AddPlayerById = ({ myId }) => {
 
       {/* Pending requests panel */}
       {pendingRequests.length > 0 && (
-        <div className="fixed bottom-24 right-6 bg-gray-900 bg-opacity-90 backdrop-filter backdrop-blur-sm p-5 rounded-xl shadow-2xl z-30 w-80 border border-purple-500 border-opacity-50">
-          <h3 className="font-bold mb-4 text-xl text-white flex items-center">
-            <svg className="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <div className="fixed bottom-24 right-6 bg-slate-900 bg-opacity-90 backdrop-filter backdrop-blur-lg p-5 rounded-xl shadow-2xl z-30 w-80 border border-purple-500 border-opacity-50">
+          <h3 className="font-bold mb-4 text-xl text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-pink-500 flex items-center">
+            <svg className="w-5 h-5 mr-2 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
             Join Requests
           </h3>
           <div className="space-y-4">
             {pendingRequests.map(req => (
-              <div key={req.id} className="border border-gray-700 rounded-lg p-4 bg-black bg-opacity-30">
+              <div key={req.id} className="border border-purple-700 border-opacity-50 rounded-lg p-4 bg-black bg-opacity-40">
                 <p className="mb-3 text-white">
-                  <span className="font-bold text-yellow-300">{req.name}</span> wants to join your race!
-                  <div className="text-xs text-gray-400 mt-1">ID: {formatDisplayId(req.id)}</div>
+                  <span className="font-bold text-amber-300">{req.name}</span> wants to join your race!
+                  <div className="text-xs text-purple-300 mt-1">ID: {formatDisplayId(req.id)}</div>
                 </p>
                 <div className="flex space-x-3">
                   <button 
                     onClick={() => handleAcceptRequest(req)}
-                    className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-1.5 rounded-md text-sm hover:from-green-600 hover:to-emerald-700 flex-1 flex items-center justify-center"
+                    className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-1.5 rounded-md text-sm hover:opacity-90 flex-1 flex items-center justify-center"
                   >
                     <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -174,7 +174,7 @@ const AddPlayerById = ({ myId }) => {
                   </button>
                   <button 
                     onClick={() => handleRejectRequest(req.id)}
-                    className="bg-gradient-to-r from-red-500 to-pink-600 text-white px-4 py-1.5 rounded-md text-sm hover:from-red-600 hover:to-pink-700 flex-1 flex items-center justify-center"
+                    className="bg-gradient-to-r from-red-500 to-pink-600 text-white px-4 py-1.5 rounded-md text-sm hover:opacity-90 flex-1 flex items-center justify-center"
                   >
                     <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -189,10 +189,10 @@ const AddPlayerById = ({ myId }) => {
       )}
 
       {showPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm flex items-center justify-center z-40">
-          <div className="bg-gray-900 bg-opacity-90 p-8 rounded-xl shadow-2xl w-96 border border-indigo-500 border-opacity-50 transform transition-all duration-300">
-            <h2 className="text-2xl font-bold mb-6 text-white flex items-center">
-              <svg className="w-6 h-6 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <div className="fixed inset-0 bg-black bg-opacity-70 backdrop-filter backdrop-blur-lg flex items-center justify-center z-40">
+          <div className="bg-slate-900 bg-opacity-90 p-8 rounded-2xl shadow-2xl w-96 border border-purple-500 border-opacity-50 transform transition-all duration-300">
+            <h2 className="text-2xl font-bold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-pink-500 flex items-center">
+              <svg className="w-6 h-6 mr-2 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
               Join a Friend's Race
@@ -200,16 +200,14 @@ const AddPlayerById = ({ myId }) => {
             
             <form onSubmit={handleJoinById}>
               <div className="relative mb-6">
-                <label className="text-blue-300 text-sm font-medium mb-2 block">Friend's Player ID</label>
+                <label className="text-amber-300 text-sm font-medium mb-2 block">Friend's Player ID</label>
                 <input
                   type="text"
-                  className="w-full bg-black bg-opacity-50 border-b-2 border-indigo-500 p-3 text-white placeholder-indigo-300 focus:outline-none focus:border-yellow-400 transition duration-300 rounded-md font-mono tracking-wider"
-                  placeholder="XXX-XXX-XXXX"
                   value={playerId}
                   onChange={handleIdChange}
-                  maxLength={12} // 10 digits + 2 dashes
+                  placeholder="XXX-XXX-XXXX"
+                  className="w-full bg-black bg-opacity-50 border-b-2 border-purple-500 p-3 text-white focus:outline-none focus:border-amber-400 transition duration-300 rounded-md"
                 />
-                <div className="text-xs text-gray-400 mt-1">Enter a 10-digit player ID</div>
               </div>
               
               {message && (
@@ -238,12 +236,8 @@ const AddPlayerById = ({ myId }) => {
               <div className="flex justify-between space-x-4">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowPopup(false);
-                    setMessage('');
-                    setPlayerId('');
-                  }}
-                  className="flex-1 bg-gray-700 text-gray-200 px-4 py-3 rounded-lg hover:bg-gray-600 transition duration-300 flex items-center justify-center"
+                  onClick={() => setShowPopup(false)}
+                  className="flex-1 bg-slate-700 text-slate-200 px-4 py-3 rounded-xl hover:bg-slate-600 transition duration-300 flex items-center justify-center"
                 >
                   <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -252,12 +246,12 @@ const AddPlayerById = ({ myId }) => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-3 rounded-lg hover:from-indigo-700 hover:to-purple-700 transition duration-300 flex items-center justify-center"
+                  className="flex-1 bg-gradient-to-r from-purple-500 to-pink-600 text-white px-4 py-3 rounded-xl hover:opacity-90 transition duration-300 flex items-center justify-center"
                 >
                   <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                   </svg>
-                  Join Race
+                  Send Request
                 </button>
               </div>
             </form>
