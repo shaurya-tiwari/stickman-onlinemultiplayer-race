@@ -3,7 +3,18 @@ import { useState } from 'react';
 const PlayerIdDisplay = ({ playerId }) => {
   const [copied, setCopied] = useState(false);
   
+  // Format the 10-digit ID for better readability: XXX-XXX-XXXX
+  const formatPlayerId = (id) => {
+    if (!id) return '';
+    const idStr = id.toString();
+    if (idStr.length === 10) {
+      return `${idStr.substring(0, 3)}-${idStr.substring(3, 6)}-${idStr.substring(6, 10)}`;
+    }
+    return id;
+  };
+  
   const copyToClipboard = () => {
+    // Always copy the unformatted ID
     navigator.clipboard.writeText(playerId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -13,7 +24,9 @@ const PlayerIdDisplay = ({ playerId }) => {
     <div className="fixed top-0 left-0 right-0 bg-gray-900 bg-opacity-85 backdrop-filter backdrop-blur-sm text-white py-3 px-4 shadow-lg z-10">
       <div className="flex items-center justify-center flex-wrap gap-2">
         <span className="text-sm font-medium text-blue-300">Your Player ID:</span>
-        <code className="bg-gray-800 px-3 py-1 rounded-md font-mono text-yellow-300 border border-gray-700">{playerId}</code>
+        <code className="bg-gray-800 px-3 py-1 rounded-md font-mono text-yellow-300 border border-gray-700">
+          {formatPlayerId(playerId)}
+        </code>
         <button 
           onClick={copyToClipboard}
           className={`${copied ? 'bg-green-500' : 'bg-indigo-600'} text-white text-xs px-3 py-1.5 rounded-md hover:bg-indigo-700 transition-all duration-300 transform hover:scale-105 flex items-center`}

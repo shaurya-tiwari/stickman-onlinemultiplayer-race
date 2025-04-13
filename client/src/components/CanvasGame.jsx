@@ -94,6 +94,16 @@ const CanvasGame = ({ playerName }) => {
     }
   };
 
+  // Format a player ID for display (XXX-XXX-XXXX)
+  const formatDisplayId = (id) => {
+    if (!id) return '';
+    const idStr = id.toString();
+    if (idStr.length === 10) {
+      return `${idStr.substring(0, 3)}-${idStr.substring(3, 6)}-${idStr.substring(6, 10)}`;
+    }
+    return id;
+  };
+
   useEffect(() => {
     if (playerName) {
       socket.emit('set-name', playerName);
@@ -123,6 +133,7 @@ const CanvasGame = ({ playerName }) => {
     });
 
     socket.on('init', ({ id, players, trees: serverTrees, obstacles: serverObstacles }) => {
+      console.log(`Init received with ID: ${id}, players:`, players);
       setMyId(id);
       setPlayers(players);
 
@@ -161,8 +172,13 @@ const CanvasGame = ({ playerName }) => {
       }
     });
 
+    socket.on('player-joined', (data) => {
+      console.log(`CanvasGame: Player joined event received:`, data);
+      console.log(`Current visiblePlayers:`, Array.from(visiblePlayers));
+    });
+
     socket.on('new-player', ({ id, name, x, y }) => {
-      console.log(`New player joined: ${id}, Name: ${name}`);
+      console.log(`New player joined: ${id}, Name: ${name}, Current players:`, players);
       setPlayers(prev => ({
         ...prev,
         [id]: { 
@@ -184,6 +200,7 @@ const CanvasGame = ({ playerName }) => {
     });
 
     socket.on('player-disconnected', ({ id }) => {
+      console.log(`Player disconnected: ${id}`);
       setPlayers(prev => {
         const updated = { ...prev };
         delete updated[id];
@@ -193,8 +210,8 @@ const CanvasGame = ({ playerName }) => {
 
     // Handle request acceptance
     socket.on('accept-join-request', ({ playerId }) => {
-      // Make sure both players exist
-      if (!players[socket.id] || !players[playerId]) return;
+      console.log(`Accept join request received for player: ${playerId}`);
+      // No need to check if players exist since the server already checked
       
       // Add the joining player with the correct name
       if (players[playerId]) {
@@ -204,6 +221,10 @@ const CanvasGame = ({ playerName }) => {
           [playerId]: { ...prev[playerId], name: playerName }
         }));
       }
+    });
+
+    socket.on('request-accepted', () => {
+      console.log('My join request was accepted!');
     });
 
     const handleKeyDown = e => {
@@ -284,6 +305,10 @@ const CanvasGame = ({ playerName }) => {
       socket.off('player-moved');
       socket.off('player-disconnected');
       socket.off('restart-race');
+      socket.off('accept-join-request');
+      socket.off('player-joined');
+      socket.off('request-accepted');
+      socket.off('request-rejected');
     };
   }, [myId, playerName]);
 
@@ -525,7 +550,11 @@ const CanvasGame = ({ playerName }) => {
 
           {/* Overlay the stickman gifs on top of the canvas */}
           {Object.entries(players).map(([id, player]) => {
-            if (visiblePlayers.has(id)) {
+            // For debugging, always render all players without visiblePlayers check
+            console.log(`Rendering player ${id}, visible: ${visiblePlayers.has(id)}, player:`, player);
+            
+            // DEBUG: Temporarily ignore visiblePlayers check to see if data is correct
+            // if (visiblePlayers.has(id)) {
               const me = players[myId];
               const cameraOffset = me ? me.x - fixedPlayerX : 0;
               const drawX = id === myId ? fixedPlayerX : player.x - cameraOffset;
@@ -560,7 +589,7 @@ const CanvasGame = ({ playerName }) => {
                 >
                   {/* Player name tag with better styling */}
                   <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap px-2 py-1 bg-black bg-opacity-70 rounded-md text-xs text-white border border-indigo-400 pulse-border">
-                    {player.name || id.substring(0, 5)}
+                    {player.name || formatDisplayId(id)}
                   </div>
                   
                   {/* Only render one image at a time */}
@@ -578,8 +607,8 @@ const CanvasGame = ({ playerName }) => {
                   />
                 </div>
               );
-            }
-            return null;
+            // }
+            // return null;
           })}
         </div>
       </div>

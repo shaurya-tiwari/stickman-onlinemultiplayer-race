@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import socket, { visiblePlayers } from '../socket';
+import socket, { visiblePlayers, cleanId, safeEmit } from '../socket';
 
 const AddPlayerById = ({ myId }) => {
   const [showPopup, setShowPopup] = useState(false);
@@ -8,9 +8,20 @@ const AddPlayerById = ({ myId }) => {
   const [messageType, setMessageType] = useState('');
   const [pendingRequests, setPendingRequests] = useState([]);
 
+  // Format a player ID for display (XXX-XXX-XXXX)
+  const formatDisplayId = (id) => {
+    if (!id) return '';
+    const idStr = id.toString();
+    if (idStr.length === 10) {
+      return `${idStr.substring(0, 3)}-${idStr.substring(3, 6)}-${idStr.substring(6, 10)}`;
+    }
+    return id;
+  };
+
   useEffect(() => {
     // Listen for join requests from other players
     socket.on('join-request', ({ playerId, playerName }) => {
+      console.log(`Received join request from: ${playerName} (${playerId})`);
       setPendingRequests(prev => [
         ...prev,
         { id: playerId, name: playerName }
@@ -19,6 +30,7 @@ const AddPlayerById = ({ myId }) => {
 
     // Listen for acceptance/rejection responses
     socket.on('request-accepted', () => {
+      console.log('Join request was accepted!');
       setMessage('Join request accepted!');
       setMessageType('success');
       setTimeout(() => {
@@ -28,6 +40,7 @@ const AddPlayerById = ({ myId }) => {
     });
 
     socket.on('request-rejected', () => {
+      console.log('Join request was rejected.');
       setMessage('Join request was rejected.');
       setMessageType('error');
       setTimeout(() => setMessage(''), 3000);
@@ -42,13 +55,26 @@ const AddPlayerById = ({ myId }) => {
 
   const handleJoinById = (e) => {
     e.preventDefault();
-    if (!playerId.trim()) {
+    
+    // Clean the ID (remove any formatting)
+    const cleanedId = cleanId(playerId.trim());
+    
+    if (!cleanedId) {
       setMessage('Please enter a player ID');
       setMessageType('error');
       return;
     }
+    
+    // Validate: must be 10 digits
+    if (!/^\d{10}$/.test(cleanedId)) {
+      setMessage('Player ID must be 10 digits');
+      setMessageType('error');
+      return;
+    }
 
-    socket.emit('join-by-id', { targetId: playerId.trim() }, (response) => {
+    console.log(`Attempting to join player with ID: ${cleanedId}`);
+    safeEmit('join-by-id', { targetId: cleanedId }, (response) => {
+      console.log(`Join by ID response:`, response);
       if (response.success) {
         setMessage('Join request sent! Waiting for approval...');
         setMessageType('info');
@@ -60,13 +86,42 @@ const AddPlayerById = ({ myId }) => {
   };
 
   const handleAcceptRequest = (requestInfo) => {
-    socket.emit('accept-join-request', { playerId: requestInfo.id });
+    console.log(`Accepting join request from player: ${requestInfo.id}`, requestInfo);
+    // Use the safeEmit to ensure ID is properly formatted
+    safeEmit('accept-join-request', { playerId: requestInfo.id });
+    // Update UI immediately 
     setPendingRequests(prev => prev.filter(req => req.id !== requestInfo.id));
   };
 
   const handleRejectRequest = (playerId) => {
-    socket.emit('reject-join-request', { playerId });
+    console.log(`Rejecting join request from player: ${playerId}`);
+    // Use the safeEmit to ensure ID is properly formatted
+    safeEmit('reject-join-request', { playerId });
+    // Update UI immediately 
     setPendingRequests(prev => prev.filter(req => req.id !== playerId));
+  };
+
+  // Format ID as user types (XXX-XXX-XXXX)
+  const handleIdChange = (e) => {
+    const input = e.target.value.replace(/-/g, ''); // Remove existing dashes
+    const digits = input.replace(/\D/g, ''); // Keep only digits
+    
+    // Format with dashes
+    let formattedValue = '';
+    if (digits.length > 0) {
+      formattedValue = digits.substring(0, 3);
+      if (digits.length > 3) {
+        formattedValue += '-' + digits.substring(3, 6);
+      }
+      if (digits.length > 6) {
+        formattedValue += '-' + digits.substring(6, 10);
+      }
+    }
+    
+    // Limit to 10 digits (plus 2 dashes = 12 characters max)
+    if (formattedValue.length <= 12) {
+      setPlayerId(formattedValue);
+    }
   };
 
   return (
@@ -103,7 +158,10 @@ const AddPlayerById = ({ myId }) => {
           <div className="space-y-4">
             {pendingRequests.map(req => (
               <div key={req.id} className="border border-gray-700 rounded-lg p-4 bg-black bg-opacity-30">
-                <p className="mb-3 text-white"><span className="font-bold text-yellow-300">{req.name}</span> wants to join your race!</p>
+                <p className="mb-3 text-white">
+                  <span className="font-bold text-yellow-300">{req.name}</span> wants to join your race!
+                  <div className="text-xs text-gray-400 mt-1">ID: {formatDisplayId(req.id)}</div>
+                </p>
                 <div className="flex space-x-3">
                   <button 
                     onClick={() => handleAcceptRequest(req)}
@@ -145,11 +203,13 @@ const AddPlayerById = ({ myId }) => {
                 <label className="text-blue-300 text-sm font-medium mb-2 block">Friend's Player ID</label>
                 <input
                   type="text"
-                  className="w-full bg-black bg-opacity-50 border-b-2 border-indigo-500 p-3 text-white placeholder-indigo-300 focus:outline-none focus:border-yellow-400 transition duration-300 rounded-md"
-                  placeholder="Enter player ID"
+                  className="w-full bg-black bg-opacity-50 border-b-2 border-indigo-500 p-3 text-white placeholder-indigo-300 focus:outline-none focus:border-yellow-400 transition duration-300 rounded-md font-mono tracking-wider"
+                  placeholder="XXX-XXX-XXXX"
                   value={playerId}
-                  onChange={(e) => setPlayerId(e.target.value)}
+                  onChange={handleIdChange}
+                  maxLength={12} // 10 digits + 2 dashes
                 />
+                <div className="text-xs text-gray-400 mt-1">Enter a 10-digit player ID</div>
               </div>
               
               {message && (
