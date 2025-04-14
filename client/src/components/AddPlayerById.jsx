@@ -56,49 +56,94 @@ const AddPlayerById = ({ myId }) => {
   const handleJoinById = (e) => {
     e.preventDefault();
     
-    // Clean the ID (remove any formatting)
-    const cleanedId = cleanId(playerId.trim());
+    // Reset any previous messages
+    setMessage('');
+    setMessageType('');
     
-    if (!cleanedId) {
+    // Validate input
+    if (!playerId) {
       setMessage('Please enter a player ID');
       setMessageType('error');
       return;
     }
     
-    // Validate: must be 10 digits
-    if (!/^\d{10}$/.test(cleanedId)) {
-      setMessage('Player ID must be 10 digits');
-      setMessageType('error');
-      return;
-    }
-
-    console.log(`Attempting to join player with ID: ${cleanedId}`);
-    safeEmit('join-by-id', { targetId: cleanedId }, (response) => {
-      console.log(`Join by ID response:`, response);
-      if (response.success) {
-        setMessage('Join request sent! Waiting for approval...');
-        setMessageType('info');
-      } else {
-        setMessage(response.message || 'Player ID not found');
+    try {
+      // Clean the ID (remove any formatting)
+      const cleanedId = cleanId(playerId.trim());
+      
+      if (!cleanedId) {
+        setMessage('Please enter a player ID');
         setMessageType('error');
+        return;
       }
-    });
+      
+      // Validate: must be 10 digits
+      if (!/^\d{10}$/.test(cleanedId)) {
+        setMessage('Player ID must be 10 digits');
+        setMessageType('error');
+        return;
+      }
+      
+      // Prevent joining yourself
+      if (cleanedId === myId) {
+        setMessage('You cannot join yourself');
+        setMessageType('error');
+        return;
+      }
+
+      console.log(`Attempting to join player with ID: ${cleanedId}`);
+      setMessage('Sending join request...');
+      setMessageType('info');
+      
+      safeEmit('join-by-id', { targetId: cleanedId }, (response) => {
+        console.log(`Join by ID response:`, response);
+        if (response && response.success) {
+          setMessage('Join request sent! Waiting for approval...');
+          setMessageType('info');
+        } else {
+          setMessage(response?.message || 'Player ID not found');
+          setMessageType('error');
+        }
+      });
+    } catch (error) {
+      console.error('Error in join request:', error);
+      setMessage('An error occurred. Please try again.');
+      setMessageType('error');
+    }
   };
 
   const handleAcceptRequest = (requestInfo) => {
-    console.log(`Accepting join request from player: ${requestInfo.id}`, requestInfo);
-    // Use the safeEmit to ensure ID is properly formatted
-    safeEmit('accept-join-request', { playerId: requestInfo.id });
-    // Update UI immediately 
-    setPendingRequests(prev => prev.filter(req => req.id !== requestInfo.id));
+    try {
+      if (!requestInfo || !requestInfo.id) {
+        console.error('Invalid request info:', requestInfo);
+        return;
+      }
+      
+      console.log(`Accepting join request from player: ${requestInfo.id}`, requestInfo);
+      // Use the safeEmit to ensure ID is properly formatted
+      safeEmit('accept-join-request', { playerId: requestInfo.id });
+      // Update UI immediately 
+      setPendingRequests(prev => prev.filter(req => req.id !== requestInfo.id));
+    } catch (error) {
+      console.error('Error accepting request:', error);
+    }
   };
 
   const handleRejectRequest = (playerId) => {
-    console.log(`Rejecting join request from player: ${playerId}`);
-    // Use the safeEmit to ensure ID is properly formatted
-    safeEmit('reject-join-request', { playerId });
-    // Update UI immediately 
-    setPendingRequests(prev => prev.filter(req => req.id !== playerId));
+    try {
+      if (!playerId) {
+        console.error('Invalid player ID for rejection');
+        return;
+      }
+      
+      console.log(`Rejecting join request from player: ${playerId}`);
+      // Use the safeEmit to ensure ID is properly formatted
+      safeEmit('reject-join-request', { playerId });
+      // Update UI immediately 
+      setPendingRequests(prev => prev.filter(req => req.id !== playerId));
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+    }
   };
 
   // Format ID as user types (XXX-XXX-XXXX)
@@ -160,8 +205,8 @@ const AddPlayerById = ({ myId }) => {
               <div key={req.id} className="border border-purple-700 border-opacity-50 rounded-lg p-4 bg-black bg-opacity-40">
                 <p className="mb-3 text-white">
                   <span className="font-bold text-amber-300">{req.name}</span> wants to join your race!
-                  <div className="text-xs text-purple-300 mt-1">ID: {formatDisplayId(req.id)}</div>
                 </p>
+                <div className="text-xs text-purple-300 mb-3">ID: {formatDisplayId(req.id)}</div>
                 <div className="flex space-x-3">
                   <button 
                     onClick={() => handleAcceptRequest(req)}

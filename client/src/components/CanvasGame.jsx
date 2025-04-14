@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import PlayerIdDisplay from './PlayerIdDisplay';
 import AddPlayerById from './AddPlayerById';
 import GameSettings from './GameSettings';
@@ -7,7 +7,9 @@ import socket, {
   visiblePlayers, 
   safeEmit, 
   updatePosition, 
-  lastKnownPosition 
+  lastKnownPosition,
+  addGlobalEventListener,
+  cleanupGlobalEventListeners
 } from '../socket';
 
 // Tree Images
@@ -62,7 +64,7 @@ const obstacleMap = {
   'spike.png': spike,
 };
 
-const CanvasGame = ({ playerName, isHost }) => {
+const CanvasGame = ({ playerName, isHost, onError }) => {
   const canvasRef = useRef(null);
   const [players, setPlayers] = useState({});
   const [myId, setMyId] = useState(null);
@@ -87,34 +89,81 @@ const CanvasGame = ({ playerName, isHost }) => {
   const [isReconnecting, setIsReconnecting] = useState(false);
   const reconnectionAttempts = useRef(0);
   const [lastServerPosition, setLastServerPosition] = useState(null);
+  const [collisionBounce, setCollisionBounce] = useState(false);
+  const collisionTimer = useRef(null);
   const [raceStatus, setRaceStatus] = useState({
     isActive: false,
     distance: 1000
   });
+  const [finishPosition, setFinishPosition] = useState(null);
+  const [showPositionNotification, setShowPositionNotification] = useState(false);
+  const [showErrorMessage, setShowErrorMessage] = useState('');
+  const errorMessageTimer = useRef(null);
+  // Create a ref to track all timeouts for proper cleanup
+  const timeoutsRef = useRef([]);
+  
+  // Error handling for canvas rendering issues
+  const [canvasError, setCanvasError] = useState(false);
+  
+  // Add a new state to track when user wants to exit
+  const [exitGame, setExitGame] = useState(false);
+  
+  // Helper function to create and track timeouts - defined outside useEffect
+  const createTrackedTimeout = useCallback((callback, delay) => {
+    const id = setTimeout(callback, delay);
+    timeoutsRef.current.push(id);
+    return id;
+  }, []);
+
+  // Initial validation of props
+  useEffect(() => {
+    try {
+      // Validate playerName
+      if (!playerName) {
+        console.error('Missing player name');
+        if (onError) onError(new Error('Missing player name'));
+      }
+      
+      // Make sure we can render the canvas
+      if (!canvasRef.current) {
+        console.error('Canvas element not available');
+        setCanvasError(true);
+        if (onError) onError(new Error('Canvas initialization failed'));
+      }
+    } catch (error) {
+      console.error('Error during component initialization:', error);
+      setCanvasError(true);
+      if (onError) onError(error);
+    }
+  }, [playerName, onError]);
+  
+  // Handle global errors and pass them up to the parent
+  useEffect(() => {
+    const handleGlobalError = (event) => {
+      console.error('Error caught in CanvasGame:', event.error || event);
+      if (onError) onError(event.error || new Error('Game error'));
+    };
+    
+    window.addEventListener('error', handleGlobalError);
+    
+    return () => {
+      window.removeEventListener('error', handleGlobalError);
+    };
+  }, [onError]);
 
   // Function to restart the race
   const restartRace = () => {
     // Only the host can restart the race
     if (myId) {
-      const me = players[myId];
-      if (me) {
-        // Reset my position
-        const updatedMe = { ...me, x: 0, y: groundY, isJumping: false };
-        setPlayers(prev => ({ ...prev, [myId]: updatedMe }));
-        socket.emit('update-position', updatedMe);
-      }
-      
-      // Reset race status
+      // Clear any finish states
       setRaceWinner(null);
       setHasFinished(false);
       setShowWinnerNotification(false);
+      setFinishPosition(null);
+      setShowPositionNotification(false);
       
       // Emit restart race event to reset all players
       socket.emit('restart-race');
-      
-      // Show restart notification
-      setShowRestartNotification(true);
-      setTimeout(() => setShowRestartNotification(false), 3000);
     }
   };
 
@@ -159,6 +208,31 @@ const CanvasGame = ({ playerName, isHost }) => {
     return false;
   };
 
+  // Auto-request host status when we receive our ID
+  const autoRequestHostStatus = useCallback((id) => {
+    if (isHost && id) {
+      console.log("Auto-requesting host status as user selected 'Enter as Host'");
+      safeEmit('become-host', {}, (response) => {
+        console.log("Host status response:", response);
+        
+        // Ensure host player is added to the players state if not already there
+        if (response.success) {
+          setPlayers(prev => {
+            // If the host player isn't in the state yet, add them
+            if (!prev[id]) {
+              console.log(`Adding host player ${id} to state`);
+              return {
+                ...prev,
+                [id]: { x: 0, y: 0, name: playerName, isJumping: false }
+              };
+            }
+            return prev;
+          });
+        }
+      });
+    }
+  }, [isHost, playerName]);
+
   useEffect(() => {
     if (playerName) {
       socket.emit('set-name', playerName);
@@ -166,62 +240,38 @@ const CanvasGame = ({ playerName, isHost }) => {
 
     // If user selected to enter as host, automatically request to become host
     // when we receive our ID from the server
-    const autoRequestHostStatus = (id) => {
-      if (isHost && id) {
-        console.log("Auto-requesting host status as user selected 'Enter as Host'");
-        safeEmit('become-host', {}, (response) => {
-          console.log("Host status response:", response);
-          
-          // Ensure host player is added to the players state if not already there
-          if (response.success) {
-            setPlayers(prev => {
-              // If the host player isn't in the state yet, add them
-              if (!prev[id]) {
-                console.log(`Adding host player ${id} to state`);
-                return {
-                  ...prev,
-                  [id]: { x: 0, y: 0, name: playerName, isJumping: false }
-                };
-              }
-              return prev;
-            });
-          }
-        });
-      }
-    };
+    autoRequestHostStatus(myId);
 
-    // Listen for race distance updates
-    socket.on('game-settings-updated', ({ raceDistance: newDistance }) => {
+    // Define all event handlers first to allow proper cleanup
+    const handleGameSettingsUpdated = ({ raceDistance: newDistance }) => {
       console.log(`Race distance updated to ${newDistance}m`);
       setRaceDistance(newDistance);
       // Reset race status when distance changes
       setRaceWinner(null);
       setHasFinished(false);
       setShowWinnerNotification(false);
-    });
+      setFinishPosition(null);
+      setShowPositionNotification(false);
+    };
 
-    // Listen for winner announcements
-    socket.on('race-winner', ({ playerId, playerName }) => {
+    const handleRaceWinner = ({ playerId, playerName }) => {
       console.log(`Race winner: ${playerName} (${playerId})`);
       setRaceWinner({ id: playerId, name: playerName });
       setShowWinnerNotification(true);
-      setTimeout(() => setShowWinnerNotification(false), 5000);
-    });
+      createTrackedTimeout(() => setShowWinnerNotification(false), 5000);
+    };
 
-    // Listen for restart race event
-    socket.on('restart-race', () => {
+    const handleRestartRace = (data) => {
       // Reset all players positions
       setPlayers(prev => {
         const updated = { ...prev };
         Object.keys(updated).forEach(playerId => {
-          if (playerId !== myId) { // Exclude myself as I've already updated my position
-            updated[playerId] = {
-              ...updated[playerId],
-              x: 0,
-              y: groundY,
-              isJumping: false
-            };
-          }
+          updated[playerId] = {
+            ...updated[playerId],
+            x: 0,
+            y: groundY,
+            isJumping: false
+          };
         });
         return updated;
       });
@@ -230,13 +280,24 @@ const CanvasGame = ({ playerName, isHost }) => {
       setRaceWinner(null);
       setHasFinished(false);
       setShowWinnerNotification(false);
+      setFinishPosition(null);
+      setShowPositionNotification(false);
+      
+      // Update race status with data from server
+      if (data) {
+        setRaceStatus({
+          isActive: true,
+          startTime: data.startTime,
+          distance: data.distance
+        });
+      }
       
       // Show restart notification for players who received the event
       setShowRestartNotification(true);
-      setTimeout(() => setShowRestartNotification(false), 3000);
-    });
+      createTrackedTimeout(() => setShowRestartNotification(false), 3000);
+    };
 
-    socket.on('init', ({ id, players, trees: serverTrees, obstacles: serverObstacles }) => {
+    const handleInit = ({ id, players, trees: serverTrees, obstacles: serverObstacles }) => {
       console.log(`Init received with ID: ${id}, players:`, players);
       setMyId(id);
       
@@ -257,113 +318,171 @@ const CanvasGame = ({ playerName, isHost }) => {
         lastPosRef.current = players[id].x;
       }
 
-      // Load trees
+      // Load trees with error handling
       if (serverTrees?.length) {
         let loaded = 0;
+        let errors = 0;
         const temp = [];
+        const totalImages = serverTrees.length;
+        
         serverTrees.forEach(tree => {
           const img = new Image();
-          img.src = treeMap[tree.image];
+          
           img.onload = () => {
             loaded++;
             temp.push({ x: tree.x, image: img });
-            if (loaded === serverTrees.length) setTrees(temp);
+            if (loaded + errors === totalImages) {
+              setTrees(temp);
+            }
           };
-        });
-      }
-
-      // Load obstacles
-      if (serverObstacles?.length) {
-        let loaded = 0;
-        const temp = [];
-        serverObstacles.forEach(ob => {
-          const img = new Image();
-          img.src = obstacleMap[ob.image];
-          img.onload = () => {
-            loaded++;
-            temp.push({ x: ob.x, image: img });
-            if (loaded === serverObstacles.length) setObstacles(temp);
+          
+          img.onerror = () => {
+            console.error(`Failed to load tree image: ${tree.image}`);
+            errors++;
+            // Still add an entry with default image or placeholder
+            if (loaded + errors === totalImages) {
+              setTrees(temp);
+            }
           };
+          
+          // Set src after adding event handlers
+          img.src = treeMap[tree.image] || treeMap['tree.png']; // Fallback to default
         });
-      }
-    });
-
-    socket.on('player-joined', (data) => {
-      console.log(`CanvasGame: Player joined event received:`, data);
-      console.log(`Current visiblePlayers:`, Array.from(visiblePlayers));
-    });
-
-    socket.on('new-player', ({ id, name, x, y }) => {
-      console.log(`New player joined: ${id}, Name: ${name}, Current players:`, players);
-      setPlayers(prev => {
-        // Add the new player data to the players state
-        const updated = {
-          ...prev,
-          [id]: { 
-            x: x || 0, 
-            y: y || groundY, 
-            name: name || `Player-${id.substring(0, 5)}`, 
-            isJumping: false 
+        
+        // Safety timeout to ensure trees are set even if some images fail to load
+        const safetyTimer = setTimeout(() => {
+          if (temp.length > 0 && temp.length < totalImages) {
+            console.warn('Some tree images failed to load, using partial set');
+            setTrees(temp);
           }
-        };
+        }, 3000); // 3 second timeout
         
-        // Special case: if this is our own ID and we were missing from state
-        if (id === myId && !prev[myId]) {
-          console.log(`This is my ID (${id}) and I was missing from state, adding myself back`);
-        }
-        
-        return updated;
-      });
-    });
-
-    socket.on('player-moved', ({ id, x, y, name }) => {
-      setPlayers(prev => {
-        const existing = prev[id] || {};
-        // Keep the player's name when updating position or use the name from the server
-        const playerName = name || existing.name || `Player-${id.substring(0, 5)}`;
-        return { ...prev, [id]: { ...existing, x, y, name: playerName } };
-      });
-    });
-
-    socket.on('player-disconnected', ({ id }) => {
-      console.log(`Player disconnected: ${id}`);
-      setPlayers(prev => {
-        const updated = { ...prev };
-        delete updated[id];
-        return updated;
-      });
-    });
-
-    // Handle request acceptance
-    socket.on('accept-join-request', ({ playerId }) => {
-      console.log(`Accept join request received for player: ${playerId}`);
-      // No need to check if players exist since the server already checked
-      
-      // Add the joining player with the correct name
-      if (players[playerId]) {
-        const playerName = players[playerId].name;
-        setPlayers(prev => ({
-          ...prev,
-          [playerId]: { ...prev[playerId], name: playerName }
-        }));
+        // Add to tracked timeouts
+        timeoutsRef.current.push(safetyTimer);
       }
-    });
 
-    socket.on('request-accepted', () => {
-      console.log('My join request was accepted!');
-    });
-
-    const handleKeyDown = e => {
-      pressedKeys.current[e.key] = true;
-      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-        setIsMoving(true);
+      // Load obstacles with error handling
+      if (serverObstacles?.length) {
+        loadObstacles(serverObstacles);
       }
     };
 
-    const handleKeyUp = e => {
-      pressedKeys.current[e.key] = false;
+    // Define the handler for loading obstacles
+    const loadObstacles = (serverObstacles) => {
+      let loaded = 0;
+      let errors = 0;
+      const temp = [];
+      const totalImages = serverObstacles.length;
+      
+      serverObstacles.forEach(ob => {
+        const img = new Image();
+        
+        img.onload = () => {
+          loaded++;
+          temp.push({ x: ob.x, image: img });
+          if (loaded + errors === totalImages) {
+            setObstacles(temp);
+          }
+        };
+        
+        img.onerror = () => {
+          console.error(`Failed to load obstacle image: ${ob.image}`);
+          errors++;
+          // Still add an entry with default image or placeholder
+          if (loaded + errors === totalImages) {
+            setObstacles(temp);
+          }
+        };
+        
+        // Set src after adding event handlers
+        img.src = obstacleMap[ob.image] || obstacleMap['rock.png']; // Fallback to default
+      });
+      
+      // Safety timeout to ensure obstacles are set even if some images fail to load
+      const safetyTimer = setTimeout(() => {
+        if (temp.length > 0 && temp.length < totalImages) {
+          console.warn('Some obstacle images failed to load, using partial set');
+          setObstacles(temp);
+        }
+      }, 3000); // 3 second timeout
+      
+      timeoutsRef.current.push(safetyTimer);
+    };
 
-      // If no key is pressed, stop the animation immediately
+    const handleConnect = () => {
+      console.log('Reconnected to server!');
+      setIsReconnecting(false);
+      reconnectionAttempts.current = 0;
+    };
+    
+    const handleDisconnect = () => {
+      console.log('Disconnected from server, attempting to reconnect...');
+      setIsReconnecting(true);
+      reconnectionAttempts.current += 1;
+    };
+
+    const handlePositionValidated = ({ id, x, y }) => {
+      if (id === myId) {
+        // Server has validated our position
+        setLastServerPosition({ x, y });
+      }
+    };
+
+    const handlePositionCorrection = ({ x, y }) => {
+      console.log(`Server position correction received: ${x}, ${y}`);
+      
+      // Update our position to match server's validated position
+      setPlayers(prev => {
+        if (prev[myId]) {
+          return {
+            ...prev,
+            [myId]: {
+              ...prev[myId],
+              x, y
+            }
+          };
+        }
+        return prev;
+      });
+      
+      // Show collision bounce animation
+      setCollisionBounce(true);
+      if (collisionTimer.current) {
+        clearTimeout(collisionTimer.current);
+      }
+      
+      collisionTimer.current = setTimeout(() => {
+        setCollisionBounce(false);
+      }, 500);
+      
+      timeoutsRef.current.push(collisionTimer.current);
+    };
+
+    // Register all event listeners
+    socket.on('game-settings-updated', handleGameSettingsUpdated);
+    socket.on('race-winner', handleRaceWinner);
+    socket.on('restart-race', handleRestartRace);
+    socket.on('init', handleInit);
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('position-validated', handlePositionValidated);
+    socket.on('position-correction', handlePositionCorrection);
+
+    // Keyboard event handlers for player movement
+    const handleKeyDown = (e) => {
+      if (['ArrowRight', 'ArrowUp'].includes(e.key)) {
+        pressedKeys.current[e.key] = true;
+        if (!isMoving) {
+          setIsMoving(true);
+        }
+      }
+    };
+
+    const handleKeyUp = (e) => {
+      if (['ArrowRight', 'ArrowUp'].includes(e.key)) {
+        pressedKeys.current[e.key] = false;
+      }
+      
       if (!pressedKeys.current['ArrowRight'] && !pressedKeys.current['ArrowUp']) {
         setIsMoving(false);
       }
@@ -372,8 +491,371 @@ const CanvasGame = ({ playerName, isHost }) => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
-    // Update the position update handler to use our more robust validation
-    const interval = setInterval(() => {
+    // Clean up all event listeners when component unmounts
+    return () => {
+      // Clean up socket listeners
+      socket.off('game-settings-updated', handleGameSettingsUpdated);
+      socket.off('race-winner', handleRaceWinner);
+      socket.off('restart-race', handleRestartRace);
+      socket.off('init', handleInit);
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('position-validated', handlePositionValidated);
+      socket.off('position-correction', handlePositionCorrection);
+      
+      // Clean up keyboard listeners
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      
+      // Clear all timeouts
+      timeoutsRef.current.forEach(clearTimeout);
+      timeoutsRef.current = [];
+      
+      if (collisionTimer.current) {
+        clearTimeout(collisionTimer.current);
+      }
+    };
+  }, [playerName, myId, isHost, groundY, createTrackedTimeout, autoRequestHostStatus]);
+
+  useEffect(() => {
+    const ctx = canvasRef.current?.getContext('2d');
+    if (!ctx) return;
+    
+    // Pre-load and cache all images to avoid reloading them every frame
+    // Create a single instance of each image that we'll reuse
+    const treeImagesCache = {};
+    const obstacleImagesCache = {};
+    
+    // Track loading state
+    let isComponentMounted = true;
+    
+    // Load tree images
+    const loadTreeImages = async () => {
+      for (const [key, src] of Object.entries(treeMap)) {
+        if (!isComponentMounted) return;
+        
+        try {
+          const img = new Image();
+          
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => {
+              console.error(`Failed to load tree image: ${key}`);
+              reject(new Error(`Failed to load tree image: ${key}`));
+            };
+            img.src = src;
+          }).catch(() => {}); // Catch errors but continue loading other images
+          
+          if (isComponentMounted) {
+            treeImagesCache[key] = img;
+          }
+        } catch (error) {
+          console.error(`Error loading tree image ${key}:`, error);
+        }
+      }
+    };
+    
+    // Load obstacle images
+    const loadObstacleImages = async () => {
+      for (const [key, src] of Object.entries(obstacleMap)) {
+        if (!isComponentMounted) return;
+        
+        try {
+          const img = new Image();
+          
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => {
+              console.error(`Failed to load obstacle image: ${key}`);
+              reject(new Error(`Failed to load obstacle image: ${key}`));
+            };
+            img.src = src;
+          }).catch(() => {}); // Catch errors but continue loading other images
+          
+          if (isComponentMounted) {
+            obstacleImagesCache[key] = img;
+          }
+        } catch (error) {
+          console.error(`Error loading obstacle image ${key}:`, error);
+        }
+      }
+    };
+    
+    // Start loading images
+    loadTreeImages();
+    loadObstacleImages();
+
+    const draw = () => {
+      if (!ctx || !isComponentMounted) return;
+      
+      ctx.clearRect(0, 0, 800, 600);
+      const me = players[myId];
+      const cameraOffset = me ? me.x - fixedPlayerX : 0;
+      const roadY = 400;
+      
+      // Visible area boundaries with buffer
+      const visibleLeft = cameraOffset - 50;
+      const visibleRight = cameraOffset + 850;
+
+      // Draw a gradient sky background
+      const skyGradient = ctx.createLinearGradient(0, 0, 0, roadY);
+      skyGradient.addColorStop(0, '#87CEEB'); // Sky blue at top
+      skyGradient.addColorStop(0.7, '#B0E2FF'); // Lighter blue toward horizon
+      skyGradient.addColorStop(1, '#E6F0FF'); // Almost white at horizon
+      ctx.fillStyle = skyGradient;
+      ctx.fillRect(0, 0, 800, roadY);
+
+      // Draw some distant clouds for depth with optimized rendering
+      const drawCloud = (x, y, size) => {
+        // Only draw clouds if they're in the visible area plus buffer
+        const drawX = x - cameraOffset * 0.2; // Parallax effect
+        if (drawX < -200 || drawX > 1000) return; // Skip if not visible
+        
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.beginPath();
+        ctx.arc(drawX, y, size, 0, Math.PI * 2);
+        ctx.arc(drawX + size * 0.5, y - size * 0.2, size * 0.7, 0, Math.PI * 2);
+        ctx.arc(drawX + size, y, size * 0.8, 0, Math.PI * 2);
+        ctx.arc(drawX + size * 1.5, y, size * 0.7, 0, Math.PI * 2);
+        ctx.arc(drawX + size * 0.8, y + size * 0.3, size * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      };
+
+      // Draw a few clouds with parallax effect (move slower than foreground)
+      const parallaxFactor = 0.2;
+      drawCloud(100, 100, 30);
+      drawCloud(350, 150, 25);
+      drawCloud(600, 80, 35);
+      drawCloud(750, 180, 20);
+
+      // Draw game boundaries - visible border to show play area
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, 800, 600);
+
+      // Draw a nicer ground/road with gradient
+      const roadGradient = ctx.createLinearGradient(0, roadY - 15, 0, roadY + 15);
+      roadGradient.addColorStop(0, '#888888');
+      roadGradient.addColorStop(0.5, '#555555');
+      roadGradient.addColorStop(1, '#333333');
+      ctx.fillStyle = roadGradient;
+      ctx.fillRect(0, roadY, 800, 15);
+
+      // Draw grass below the road
+      ctx.fillStyle = '#4d8c57';
+      ctx.fillRect(0, roadY + 15, 800, 600 - roadY - 15);
+
+      // Draw trees with improved sizing and shadows - only draw visible trees
+      trees.forEach(({ x, image }) => {
+        // Skip trees outside the visible area for performance
+        if (x < visibleLeft - 200 || x > visibleRight + 200) return;
+        
+        const drawX = x - cameraOffset;
+        
+        // Tree shadow
+        ctx.save();
+        ctx.globalAlpha = 0.4;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.beginPath();
+        ctx.ellipse(drawX + 120, roadY + 10, 60, 15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        
+        // Tree image - use cached image if available or fall back to the one in the tree object
+        const treeImg = image.src ? image : treeImagesCache[image] || image;
+        ctx.drawImage(treeImg, drawX + 40, roadY - 280, 200, 280);
+      });
+
+      // Draw obstacles with improved sizing, shadows and effects - only draw visible obstacles
+      obstacles.forEach(({ x, image }) => {
+        // Skip obstacles outside the visible area for performance
+        if (x < visibleLeft - 60 || x > visibleRight + 60) return;
+        
+        const drawX = x - cameraOffset;
+        
+        // Obstacle shadow
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.beginPath();
+        ctx.ellipse(drawX + 30, roadY + 8, 25, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        
+        // Obstacle image - use cached image if available or fall back to the one in the obstacle object
+        const obstacleImg = image.src ? image : obstacleImagesCache[image] || image;
+        ctx.drawImage(obstacleImg, drawX, roadY - 60, 60, 60);
+      });
+
+      // Draw the finish line only if in or near view
+      const finishLineX = raceDistance - cameraOffset;
+      if (finishLineX >= -100 && finishLineX <= 900) {
+        // Checkered pattern for finish line
+        ctx.save();
+        
+        // Draw the finish line pole
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(finishLineX - 5, roadY - 150, 10, 150);
+        
+        // Draw the finish banner
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(finishLineX - 5, roadY - 150, 200, 40);
+        
+        // Draw the FINISH text
+        ctx.font = 'bold 30px Arial';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText('FINISH', finishLineX + 10, roadY - 120);
+        
+        // Draw checkered pattern on the road
+        const squareSize = 15;
+        const checkerWidth = 60;
+        for (let i = 0; i < checkerWidth / squareSize; i++) {
+          for (let j = 0; j < 6; j++) {
+            if ((i + j) % 2 === 0) {
+              ctx.fillStyle = '#FFFFFF';
+            } else {
+              ctx.fillStyle = '#000000';
+            }
+            ctx.fillRect(
+              finishLineX + (i * squareSize) - checkerWidth / 2, 
+              roadY - 3 + (j * squareSize), 
+              squareSize, 
+              squareSize
+            );
+          }
+        }
+        
+        ctx.restore();
+      }
+
+      // Improve obstacle collision detection
+      if (me && !me.isJumping) {
+        // Only check obstacles near the player, not all of them
+        const playerX = me.x;
+        const playerWidth = 30;
+        const proximityThreshold = 100; // Only check obstacles within this range
+        
+        // Filter to only obstacles near the player
+        const nearbyObstacles = obstacles.filter(ob => 
+          Math.abs(ob.x - playerX) < proximityThreshold
+        );
+        
+        // Check collisions only with nearby obstacles
+        for (const ob of nearbyObstacles) {
+          const obsStart = ob.x;
+          const obsEnd = ob.x + 60; // Obstacle width is 60px
+          const playerLeft = playerX;
+          const playerRight = playerX + playerWidth;
+          
+          // Check for collision with obstacle - more precise hitbox
+          if (playerRight > obsStart + 10 && playerLeft < obsEnd - 10) {
+            // Apply a small bounce back for more realistic physics
+            const newX = obsStart - playerWidth - 2;
+            setPlayers(prev => ({ ...prev, [myId]: { ...me, x: newX } }));
+            socket.emit('update-position', { ...me, x: newX });
+            break; // Stop checking after first collision
+          }
+        }
+      }
+
+      // Ensure player stays within horizontal game boundaries (for network updates)
+      if (me) {
+        const worldLeft = 0;
+        const worldRight = maxX;
+        
+        if (me.x < worldLeft) {
+          setPlayers(prev => ({ ...prev, [myId]: { ...me, x: worldLeft } }));
+          socket.emit('update-position', { ...me, x: worldLeft });
+        } else if (me.x > worldRight) {
+          setPlayers(prev => ({ ...prev, [myId]: { ...me, x: worldRight } }));
+          socket.emit('update-position', { ...me, x: worldRight });
+        }
+      }
+    };
+
+    let animationFrameId;
+    const animate = () => {
+      if (!isComponentMounted) return;
+      draw();
+      animationFrameId = requestAnimationFrame(animate);
+    };
+    
+    // Start the animation
+    animationFrameId = requestAnimationFrame(animate);
+    
+    return () => {
+      isComponentMounted = false;
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      
+      // Clear image caches to prevent memory leaks
+      Object.keys(treeImagesCache).forEach(key => delete treeImagesCache[key]);
+      Object.keys(obstacleImagesCache).forEach(key => delete obstacleImagesCache[key]);
+    };
+  }, [players, trees, obstacles, myId, raceDistance]);
+
+  // Inject the animation styles when component mounts
+  useEffect(() => {
+    // Animation now handled directly by img tag switching
+  }, []);
+
+  // Add a recovery mechanism to handle when the player is missing from state
+  useEffect(() => {
+    // If myId exists but the player isn't in the players state, recover it
+    if (myId && !players[myId] && playerName) {
+      console.log(`Player ${myId} is missing from state, recovering...`);
+      
+      // Create a new player object with default values
+      const recoveredPlayer = { 
+        x: lastKnownPosition.x || 0, 
+        y: lastKnownPosition.y || 0, 
+        name: playerName,
+        isJumping: false 
+      };
+      
+      // Update the state
+      setPlayers(prev => ({
+        ...prev,
+        [myId]: recoveredPlayer
+      }));
+      
+      // Send the recovered position to the server
+      socket.emit('update-position', recoveredPlayer);
+      
+      // Report the recovery for debugging
+      console.log(`Recovered player ${myId} with position:`, recoveredPlayer);
+    }
+  }, [myId, players, playerName]);
+  
+  // Add auto-refresh mechanism for visibility issues
+  useEffect(() => {
+    const visibilityCheckInterval = setInterval(() => {
+      // Check if we should be visible but aren't
+      if (myId && !players[myId] && Object.keys(players).length > 0) {
+        console.log("Visibility issue detected, refreshing player state");
+        
+        // Force re-render of myself
+        const newPlayer = { 
+          x: lastKnownPosition.x || 0, 
+          y: lastKnownPosition.y || 0, 
+          name: playerName,
+          isJumping: false 
+        };
+        
+        setPlayers(prev => ({...prev, [myId]: newPlayer}));
+        socket.emit('update-position', newPlayer);
+      }
+    }, 5000); // Check every 5 seconds
+    
+    return () => clearInterval(visibilityCheckInterval);
+  }, [myId, players, playerName]);
+
+  // Add the game loop for player movement in a separate useEffect
+  useEffect(() => {
+    const gameInterval = setInterval(() => {
       setPlayers(prev => {
         const me = prev[myId];
         if (!me) return prev;
@@ -442,326 +924,124 @@ const CanvasGame = ({ playerName, isHost }) => {
 
         return prev;
       });
-    }, 30);
+    }, 30);  // 30ms for approximately 33 fps
 
-    // Add special debug button to console log all players 
-    window.debugPlayers = () => {
-      console.log("All players in state:", players);
-      console.log("My ID:", myId);
-      console.log("Visible players:", Array.from(visiblePlayers));
-      return {
-        players,
-        myId,
-        visiblePlayers: Array.from(visiblePlayers)
-      };
-    };
+    // Clean up interval when component unmounts
+    return () => clearInterval(gameInterval);
+  }, [myId, raceDistance, hasFinished, isMoving, maxX, maxY, groundY, gravity, validateRaceFinish]);
 
-    // Add reconnection handler
-    const handleReconnection = (event) => {
-      console.log('Handling reconnection:', event.detail);
-      setIsReconnecting(false);
+  // Add an error fallback UI
+  if (canvasError) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 bg-red-800 bg-opacity-25 rounded-lg">
+        <h2 className="text-xl font-bold mb-4 text-white">Canvas Error</h2>
+        <p className="text-white mb-4">There was a problem initializing the game canvas.</p>
+        <button 
+          className="bg-blue-600 px-4 py-2 rounded-lg text-white font-bold"
+          onClick={() => window.location.reload()}
+        >
+          Reload Game
+        </button>
+      </div>
+    );
+  }
+
+  // Add this useEffect to track new players and update visiblePlayers accordingly
+  useEffect(() => {
+    // Listen for the 'new-player' event from the server
+    const handleNewPlayer = ({ id, name, x, y }) => {
+      console.log(`New player joined: ${name} (${id}), position: ${x}, ${y}`);
       
-      const { playerId, raceStatus, visiblePlayers: reconnectedPlayers } = event.detail;
-      
-      // Update race status
-      setRaceDistance(raceStatus.raceDistance || 1000);
-      setRaceStatus({
-        isActive: raceStatus.isActive,
-        distance: raceStatus.raceDistance
-      });
-      
-      // Update race winner if there is one
-      if (raceStatus.raceWinner) {
-        setRaceWinner(raceStatus.raceWinner);
-        setHasFinished(raceStatus.raceWinner.id === myId);
-      }
-      
-      // Update players with their last known positions
+      // Add to players list if not already present
       setPlayers(prev => {
-        const updated = { ...prev };
-        reconnectedPlayers.forEach(player => {
-          updated[player.id] = {
-            name: player.name,
-            x: player.x,
-            y: player.y,
-            isJumping: player.isJumping
-          };
-        });
-        return updated;
-      });
-      
-      // If we were the winner or already finished, keep that state
-      if (raceStatus.raceFinished && raceStatus.raceWinner?.id === myId) {
-        setHasFinished(true);
-      }
-    };
-    
-    // Listen for other players reconnecting
-    const handleOtherPlayerReconnection = (event) => {
-      const { id, name, x, y } = event.detail;
-      
-      // Update the reconnected player's position
-      setPlayers(prev => ({
-        ...prev,
-        [id]: {
-          ...prev[id],
-          name,
-          x,
-          y,
-          isJumping: false
-        }
-      }));
-    };
-    
-    // Add event listeners
-    window.addEventListener('player-reconnected', handleReconnection);
-    window.addEventListener('other-player-reconnected', handleOtherPlayerReconnection);
-    
-    // Add listeners for connection status changes
-    socket.on('connect', () => {
-      // If we were previously reconnecting, we've now reconnected
-      if (isReconnecting) {
-        console.log('Reconnected to server!');
-        setIsReconnecting(false);
-        reconnectionAttempts.current = 0;
-      }
-    });
-    
-    socket.on('disconnect', () => {
-      console.log('Disconnected from server, attempting to reconnect...');
-      setIsReconnecting(true);
-      reconnectionAttempts.current += 1;
-    });
-    
-    // Track server validation of player position
-    socket.on('position-validated', ({ id, x, y }) => {
-      if (id === myId) {
-        // Server has validated our position
-        setLastServerPosition({ x, y });
-      }
-    });
-    
-    // Listen for server position corrections
-    socket.on('position-correction', ({ x, y }) => {
-      console.log(`Server position correction received: ${x}, ${y}`);
-      
-      // Update our position to match server's validated position
-      setPlayers(prev => {
-        if (prev[myId]) {
+        if (!prev[id]) {
           return {
             ...prev,
-            [myId]: {
-              ...prev[myId],
-              x, y
+            [id]: {
+              name: name || `Player-${id.substring(0, 5)}`,
+              x: x || 0,
+              y: y || 0,
+              isJumping: false
             }
           };
         }
         return prev;
       });
-    });
 
+      // Add to visiblePlayers set
+      visiblePlayers.add(id);
+      console.log(`Added player ${id} to visiblePlayers, current list:`, Array.from(visiblePlayers));
+    };
+
+    socket.on('new-player', handleNewPlayer);
+    
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      socket.off('init');
-      socket.off('new-player');
-      socket.off('player-moved');
-      socket.off('player-disconnected');
-      socket.off('restart-race');
-      socket.off('accept-join-request');
-      socket.off('player-joined');
-      socket.off('request-accepted');
-      socket.off('request-rejected');
-      socket.off('game-settings-updated');
-      socket.off('race-winner');
-      socket.off('connect');
-      socket.off('disconnect');
-      socket.off('position-validated');
-      socket.off('position-correction');
-      window.removeEventListener('player-reconnected', handleReconnection);
-      window.removeEventListener('other-player-reconnected', handleOtherPlayerReconnection);
+      socket.off('new-player', handleNewPlayer);
     };
-  }, [myId, playerName, raceDistance, hasFinished, isHost, isReconnecting]);
-
-  useEffect(() => {
-    const ctx = canvasRef.current.getContext('2d');
-
-    const draw = () => {
-      ctx.clearRect(0, 0, 800, 600);
-      const me = players[myId];
-      const cameraOffset = me ? me.x - fixedPlayerX : 0;
-      const roadY = 400;
-
-      // Draw a gradient sky background
-      const skyGradient = ctx.createLinearGradient(0, 0, 0, roadY);
-      skyGradient.addColorStop(0, '#87CEEB'); // Sky blue at top
-      skyGradient.addColorStop(0.7, '#B0E2FF'); // Lighter blue toward horizon
-      skyGradient.addColorStop(1, '#E6F0FF'); // Almost white at horizon
-      ctx.fillStyle = skyGradient;
-      ctx.fillRect(0, 0, 800, roadY);
-
-      // Draw some distant clouds for depth
-      const drawCloud = (x, y, size) => {
-        ctx.save();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.arc(x + size * 0.5, y - size * 0.2, size * 0.7, 0, Math.PI * 2);
-        ctx.arc(x + size, y, size * 0.8, 0, Math.PI * 2);
-        ctx.arc(x + size * 1.5, y, size * 0.7, 0, Math.PI * 2);
-        ctx.arc(x + size * 0.8, y + size * 0.3, size * 0.7, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      };
-
-      // Draw a few clouds with parallax effect (move slower than foreground)
-      const parallaxFactor = 0.2;
-      drawCloud(100 - cameraOffset * parallaxFactor, 100, 30);
-      drawCloud(350 - cameraOffset * parallaxFactor, 150, 25);
-      drawCloud(600 - cameraOffset * parallaxFactor, 80, 35);
-      drawCloud(750 - cameraOffset * parallaxFactor, 180, 20);
-
-      // Draw game boundaries - visible border to show play area
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(0, 0, 800, 600);
-
-      // Draw a nicer ground/road with gradient
-      const roadGradient = ctx.createLinearGradient(0, roadY - 15, 0, roadY + 15);
-      roadGradient.addColorStop(0, '#888888');
-      roadGradient.addColorStop(0.5, '#555555');
-      roadGradient.addColorStop(1, '#333333');
-      ctx.fillStyle = roadGradient;
-      ctx.fillRect(0, roadY, 800, 15);
-
-      // Draw grass below the road
-      ctx.fillStyle = '#4d8c57';
-      ctx.fillRect(0, roadY + 15, 800, 600 - roadY - 15);
-
-      // Draw trees with improved sizing and shadows
-      trees.forEach(({ x, image }) => {
-        const drawX = x - cameraOffset;
-        // Only draw trees that are visible on screen (plus a small buffer)
-        if (drawX > -200 && drawX < 1000) {
-          // Tree shadow
-          ctx.save();
-          ctx.globalAlpha = 0.4;
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-          ctx.beginPath();
-          ctx.ellipse(drawX + 120, roadY + 10, 60, 15, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-          
-          // Tree image - larger and with better positioning
-          ctx.drawImage(image, drawX + 40, roadY - 280, 200, 280);
-        }
-      });
-
-      // Draw obstacles with improved sizing, shadows and effects
-      obstacles.forEach(({ x, image }) => {
-        const drawX = x - cameraOffset;
-        // Only draw obstacles that are visible on screen (plus a small buffer)
-        if (drawX > -60 && drawX < 860) {
-          // Obstacle shadow
-          ctx.save();
-          ctx.globalAlpha = 0.5;
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-          ctx.beginPath();
-          ctx.ellipse(drawX + 30, roadY + 8, 25, 8, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-          
-          // Obstacle image - larger and with better positioning
-          ctx.drawImage(image, drawX, roadY - 60, 60, 60);
-        }
-      });
-
-      if (me && !me.isJumping) {
-        obstacles.forEach(ob => {
-          const obsStart = ob.x;
-          // Update the collision detection to match the new obstacle size
-          const obsEnd = ob.x + 60; // Updated from 40 to 60
-          const playerLeft = me.x;
-          const playerRight = me.x + 30;
-          
-          // Check for collision with obstacle
-          if (playerRight > obsStart && playerLeft < obsEnd) {
-            // Move player back to avoid penetrating the obstacle
-            const newX = obsStart - 30;
-            setPlayers(prev => ({ ...prev, [myId]: { ...me, x: newX } }));
-            socket.emit('update-position', { ...me, x: newX });
-          }
-        });
-      }
-
-      // Ensure player stays within horizontal game boundaries (for network updates)
-      if (me) {
-        const worldLeft = 0;
-        const worldRight = maxX;
-        
-        if (me.x < worldLeft) {
-          setPlayers(prev => ({ ...prev, [myId]: { ...me, x: worldLeft } }));
-          socket.emit('update-position', { ...me, x: worldLeft });
-        } else if (me.x > worldRight) {
-          setPlayers(prev => ({ ...prev, [myId]: { ...me, x: worldRight } }));
-          socket.emit('update-position', { ...me, x: worldRight });
-        }
-      }
-
-      // Draw the finish line
-      const finishLineX = raceDistance - cameraOffset;
-      // Only draw if in view
-      if (finishLineX >= -10 && finishLineX <= 810) {
-        // Checkered pattern for finish line
-        ctx.save();
-        
-        // Draw the finish line pole
-        ctx.fillStyle = '#222222';
-        ctx.fillRect(finishLineX - 5, roadY - 150, 10, 150);
-        
-        // Draw the finish banner
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(finishLineX - 5, roadY - 150, 200, 40);
-        
-        // Draw the FINISH text
-        ctx.font = 'bold 30px Arial';
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillText('FINISH', finishLineX + 10, roadY - 120);
-        
-        // Draw checkered pattern on the road
-        const squareSize = 15;
-        const checkerWidth = 60;
-        for (let i = 0; i < checkerWidth / squareSize; i++) {
-          for (let j = 0; j < 6; j++) {
-            if ((i + j) % 2 === 0) {
-              ctx.fillStyle = '#FFFFFF';
-            } else {
-              ctx.fillStyle = '#000000';
-            }
-            ctx.fillRect(
-              finishLineX + (i * squareSize) - checkerWidth / 2, 
-              roadY - 3 + (j * squareSize), 
-              squareSize, 
-              squareSize
-            );
-          }
-        }
-        
-        ctx.restore();
-      }
-
-      // We no longer draw players on the canvas because we're using absolute positioned divs
-    };
-
-    const interval = setInterval(draw, 1000 / 60);
-    return () => clearInterval(interval);
-  }, [players, trees, obstacles, myId, raceDistance]);
-
-  // Inject the animation styles when component mounts
-  useEffect(() => {
-    // Animation now handled directly by img tag switching
   }, []);
+
+  // Add this to listen for player movements
+  useEffect(() => {
+    const handlePlayerMoved = ({ id, x, y, isJumping, name }) => {
+      // Ensure the player is in our visible players list
+      visiblePlayers.add(id);
+      
+      // Update player position
+      setPlayers(prev => {
+        if (prev[id]) {
+          return {
+            ...prev,
+            [id]: {
+              ...prev[id],
+              x, 
+              y,
+              isJumping,
+              name: name || prev[id].name
+            }
+          };
+        } 
+        // If player doesn't exist, add them
+        return {
+          ...prev,
+          [id]: { 
+            x, 
+            y, 
+            isJumping, 
+            name: name || `Player-${id.substring(0, 5)}` 
+          }
+        };
+      });
+    };
+    
+    socket.on('player-moved', handlePlayerMoved);
+    
+    return () => {
+      socket.off('player-moved', handlePlayerMoved);
+    };
+  }, []);
+
+  // Function to handle game exit
+  const handleExitGame = () => {
+    // Notify server that player is leaving
+    if (myId) {
+      socket.emit('player-leave', { playerId: myId });
+    }
+    
+    // Set exit state to true - will be handled by parent component
+    setExitGame(true);
+    
+    // Clean up player data from localStorage
+    localStorage.removeItem('playerName');
+    localStorage.removeItem('isHost');
+  };
+
+  // If user has chosen to exit, return null so parent can redirect
+  useEffect(() => {
+    if (exitGame && onError) {
+      // Signal to parent that we want to exit (using the error handler as a callback)
+      onError(new Error('EXIT_GAME'));
+    }
+  }, [exitGame, onError]);
 
   return (
     <div className="relative">
@@ -834,6 +1114,19 @@ const CanvasGame = ({ playerName, isHost }) => {
             </button>
           </div>
 
+          {/* Exit Game Button */}
+          <div className="absolute top-4 right-36 z-20">
+            <button 
+              onClick={handleExitGame}
+              className="bg-gradient-to-r from-gray-600 to-gray-800 text-white px-4 py-2 rounded-lg shadow-lg hover:from-gray-700 hover:to-gray-900 transform hover:scale-105 transition duration-300 flex items-center"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Exit Game
+            </button>
+          </div>
+
           {/* Game controls overlay */}
           <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg p-3 text-white text-xs border border-indigo-600">
             <div className="flex items-center space-x-2 mb-1">
@@ -886,6 +1179,32 @@ const CanvasGame = ({ playerName, isHost }) => {
             </div>
           )}
 
+          {/* Finish position notification (for non-winners) */}
+          {showPositionNotification && finishPosition && (
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-8 py-6 rounded-lg z-50 shadow-lg border-2 border-blue-500">
+              <div className="flex items-center justify-center space-x-2 text-2xl font-bold mb-4">
+                <svg className="w-8 h-8 text-blue-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                  <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812z" clipRule="evenodd" />
+                </svg>
+                <span>Race Complete!</span>
+              </div>
+              <div className="text-center text-xl font-bold mb-2">Position: {finishPosition}</div>
+              <p className="text-center text-blue-200 text-sm">You finished the race!</p>
+            </div>
+          )}
+
+          {/* Error message notification */}
+          {showErrorMessage && (
+            <div className="absolute top-1/4 left-1/2 transform -translate-x-1/2 bg-red-600 bg-opacity-90 text-white px-6 py-3 rounded-lg z-50 shadow-lg border border-red-400 animate-bounce">
+              <div className="flex items-center space-x-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span>{showErrorMessage}</span>
+              </div>
+            </div>
+          )}
+
           {/* Race restart notification */}
           {showRestartNotification && (
             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-6 py-4 rounded-lg z-50 animate-bounce shadow-lg border-2 border-yellow-500">
@@ -914,9 +1233,8 @@ const CanvasGame = ({ playerName, isHost }) => {
 
           {/* Overlay the stickman gifs on top of the canvas */}
           {Object.entries(players).map(([id, player]) => {
-            // Always render all players regardless of visiblePlayers status
-            const playerVisible = visiblePlayers.has(id);
-            console.log(`Rendering player ${id}, name: ${player.name}, visible: ${playerVisible}, isMyId: ${id === myId}`);
+            // No longer checking visibility since all players in the state should be visible
+            console.log(`Rendering player ${id}, name: ${player.name}, isMyId: ${id === myId}`);
             
             const me = players[myId];
             const cameraOffset = me ? me.x - fixedPlayerX : 0;
@@ -939,7 +1257,9 @@ const CanvasGame = ({ playerName, isHost }) => {
                 width: '30px', // Increased from 20px to 30px
                 height: '60px', // Increased from 40px to 60px
                 zIndex: 10,
-                overflow: 'visible' // Ensure image isn't clipped
+                overflow: 'visible', // Ensure image isn't clipped
+                transition: 'transform 0.1s ease-out',
+                transform: id === myId && collisionBounce ? 'translateX(-10px)' : 'translateX(0)'
               };
               
               return baseStyle;
@@ -988,6 +1308,52 @@ const CanvasGame = ({ playerName, isHost }) => {
               Player Missing! Click to debug
             </div>
           )}
+
+          {/* Debug button to show player state */}
+          <div className="absolute top-52 right-4">
+            <button 
+              onClick={() => {
+                console.log("Current game state:", {
+                  myId,
+                  allPlayers: players,
+                  visiblePlayersList: Array.from(visiblePlayers),
+                  playerCount: Object.keys(players).length,
+                  visibleCount: visiblePlayers.size
+                });
+                
+                // Show a temporary message
+                setShowErrorMessage("Check console for debug info");
+                setTimeout(() => setShowErrorMessage(""), 2000);
+              }}
+              className="bg-gradient-to-r from-green-500 to-teal-500 text-white px-4 py-2 rounded-lg shadow-lg hover:from-green-600 hover:to-teal-600 transform hover:scale-105 transition duration-300 flex items-center"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Debug Info
+            </button>
+          </div>
+          
+          {/* Sync Players button - force reconnection */}
+          <div className="absolute top-68 right-4">
+            <button 
+              onClick={() => {
+                // Force reconnection to sync all players
+                socket.disconnect();
+                setTimeout(() => socket.connect(), 500);
+                
+                // Show a temporary message
+                setShowErrorMessage("Reconnecting to sync players...");
+                setTimeout(() => setShowErrorMessage(""), 2000);
+              }}
+              className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-4 py-2 rounded-lg shadow-lg hover:from-yellow-600 hover:to-orange-600 transform hover:scale-105 transition duration-300 flex items-center mt-4"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Sync All Players
+            </button>
+          </div>
         </div>
       </div>
       {myId && <AddPlayerById myId={myId} />}

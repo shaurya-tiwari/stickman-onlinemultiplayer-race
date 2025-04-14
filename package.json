@@ -1,0 +1,14 @@
+{
+  "name": "stickman-racing",
+  "version": "1.0.0",
+  "description": "Stickman Racing Game",
+  "main": "index.js",
+  "scripts": {
+    "client": "cd client && npm run dev",
+    "server": "cd server && node index.js",
+    "dev": "npm run server"
+  },
+  "keywords": ["game", "racing", "multiplayer"],
+  "author": "",
+  "license": "ISC"
+} 
