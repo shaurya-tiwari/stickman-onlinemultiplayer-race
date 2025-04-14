@@ -7,7 +7,7 @@ const obstacleModule = require('./obstacles');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: '*' },
+  cors: { origin: 'https://stickman-onlinemultiplayer-race.vercel.app' },
   // Use custom ID generation for 10-digit numbers
   connectionStateRecovery: {
     maxDisconnectionDuration: 2 * 60 * 1000,
