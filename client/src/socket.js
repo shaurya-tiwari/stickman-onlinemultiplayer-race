@@ -2,7 +2,7 @@
 import { io } from 'socket.io-client';
 
 // Create socket with improved reconnection logic and fallback options
-let socketUrl = 'http://localhost:3001';
+let socketUrl = 'https://stickman-onlinemultiplayer-race.onrender.com/';
 // Try to determine if we're in production by checking the window location
 if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
   // Use relative URL in production to match current domain
