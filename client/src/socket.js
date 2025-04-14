@@ -179,6 +179,11 @@ socket.on('player-reconnected', ({ id, name, x, y }) => {
 
 // Modified: Update position tracking function
 const updatePosition = (position) => {
+  if (!socket.connected) {
+    console.warn('Attempted to update position while disconnected');
+    return;
+  }
+  
   if (position) {
     lastKnownPosition = { ...position };
   }
@@ -216,6 +221,12 @@ const safeEmit = (event, data, callback) => {
       return;
     }
     
+    // Check if socket is connected
+    if (!socket.connected) {
+      console.warn(`Attempted to emit ${event} while socket is disconnected`);
+      return;
+    }
+    
     // Deep copy the data to avoid modifying original
     let processedData = {};
     try {
@@ -249,18 +260,10 @@ const safeEmit = (event, data, callback) => {
       }
     } : undefined;
     
-    console.log(`Emitting ${event} with data:`, processedData);
+    // Finally emit the event
     socket.emit(event, processedData, safeCallback);
   } catch (error) {
     console.error(`Error in safeEmit for ${event}:`, error);
-    // If there's a callback, call it with an error
-    if (callback) {
-      try {
-        callback({ success: false, error: `Error sending event: ${error.message}` });
-      } catch (callbackError) {
-        console.error('Error in error callback:', callbackError);
-      }
-    }
   }
 };
 

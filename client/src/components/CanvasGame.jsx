@@ -77,12 +77,14 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
   const fixedPlayerX = 400;
   const [isMoving, setIsMoving] = useState(false);
   const lastPosRef = useRef(0);
+  // Flag to prevent immediate movement after restart
+  const justRestarted = useRef(false);
   // Define game boundaries
   const maxX = 10000; // Maximum X position (adjust as needed for your game world)
   const maxY = 200;  // Maximum Y position for jumps
   const [showRestartNotification, setShowRestartNotification] = useState(false);
   // Race finish line
-  const [raceDistance, setRaceDistance] = useState(1000);
+  const [raceDistance, setRaceDistance] = useState(5000);
   const [raceWinner, setRaceWinner] = useState(null);
   const [showWinnerNotification, setShowWinnerNotification] = useState(false);
   const [hasFinished, setHasFinished] = useState(false);
@@ -93,7 +95,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
   const collisionTimer = useRef(null);
   const [raceStatus, setRaceStatus] = useState({
     isActive: false,
-    distance: 1000
+    distance: 5000
   });
   const [finishPosition, setFinishPosition] = useState(null);
   const [showPositionNotification, setShowPositionNotification] = useState(false);
@@ -101,6 +103,9 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
   const errorMessageTimer = useRef(null);
   // Create a ref to track all timeouts for proper cleanup
   const timeoutsRef = useRef([]);
+  
+  // Add a new state to track if player is request accepter
+  const [isRequestAccepter, setIsRequestAccepter] = useState(false);
   
   // Error handling for canvas rendering issues
   const [canvasError, setCanvasError] = useState(false);
@@ -130,6 +135,14 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         setCanvasError(true);
         if (onError) onError(new Error('Canvas initialization failed'));
       }
+      
+      // Check if the player is a request sender from localStorage
+      const isRequestSender = localStorage.getItem('isRequestSender') === 'true';
+      if (isRequestSender) {
+        // If they are a request sender, they are not a request accepter
+        setIsRequestAccepter(false);
+        console.log('Player initialized as request sender');
+      }
     } catch (error) {
       console.error('Error during component initialization:', error);
       setCanvasError(true);
@@ -151,10 +164,21 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     };
   }, [onError]);
 
-  // Function to restart the race
+  // Function to restart the race - modifying to only affect local player
   const restartRace = () => {
-    // Only the host can restart the race
-    if (myId) {
+    // Skip if buttons are disabled for this player
+    if (isRequestAccepter) {
+      return;
+    }
+    
+    // Set flag to prevent immediate movement after restart
+    justRestarted.current = true;
+    setTimeout(() => {
+      justRestarted.current = false;
+    }, 200);
+    
+    // Only the host can restart the global race
+    if (myId && isHost) {
       // Clear any finish states
       setRaceWinner(null);
       setHasFinished(false);
@@ -162,8 +186,95 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       setFinishPosition(null);
       setShowPositionNotification(false);
       
+      // Reset local velocity and position references
+      velocityY.current = 0;
+      lastPosRef.current = 0;
+      
       // Emit restart race event to reset all players
       socket.emit('restart-race');
+      
+      // Set our own position to ensure synchronization
+      setPlayers(prev => {
+        const updated = { ...prev };
+        if (updated[myId]) {
+          updated[myId] = {
+            ...updated[myId],
+            x: 0,
+            y: 0,
+            isJumping: false
+          };
+        }
+        return updated;
+      });
+      
+      // Explicitly send position update to server - use exact 0 positions
+      const resetPosition = {
+        x: 0,
+        y: 0,
+        isJumping: false
+      };
+      
+      // Force immediate update locally first
+      setPlayers(prev => {
+        const updated = { ...prev };
+        if (updated[myId]) {
+          updated[myId] = {
+            ...updated[myId],
+            x: 0,
+            y: 0,
+            isJumping: false
+          };
+        }
+        return updated;
+      });
+      
+      // Force immediate update to the server
+      socket.emit('update-position', resetPosition);
+      
+      // Ensure we're at exactly position 0
+      updatePosition(resetPosition);
+    } else {
+      // For non-host players, just reset their own view
+      // Reset only the local player's position
+      setPlayers(prev => {
+        const updated = { ...prev };
+        if (updated[myId]) {
+          updated[myId] = {
+            ...updated[myId],
+            x: 0,
+            y: 0,
+            isJumping: false
+          };
+        }
+        return updated;
+      });
+      
+      // Reset velocity and position references
+      velocityY.current = 0;
+      lastPosRef.current = 0;
+      
+      // Reset race status only for this player
+      setHasFinished(false);
+      setShowWinnerNotification(false);
+      setFinishPosition(null);
+      setShowPositionNotification(false);
+      
+      // Explicitly send position update to server - use exact 0 positions
+      const resetPosition = {
+        x: 0,
+        y: 0,
+        isJumping: false
+      };
+      
+      // Force immediate update to the server
+      socket.emit('update-position', resetPosition);
+      
+      // Ensure we're at exactly position 0
+      updatePosition(resetPosition);
+      
+      // Show notification only to this player
+      setShowErrorMessage("Game restarted");
+      setTimeout(() => setShowErrorMessage(""), 2000);
     }
   };
 
@@ -257,19 +368,30 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     const handleRaceWinner = ({ playerId, playerName }) => {
       console.log(`Race winner: ${playerName} (${playerId})`);
       setRaceWinner({ id: playerId, name: playerName });
-      setShowWinnerNotification(true);
-      createTrackedTimeout(() => setShowWinnerNotification(false), 5000);
+      // Don't show the winner notification popup
+      // setShowWinnerNotification(true);
+      // createTrackedTimeout(() => setShowWinnerNotification(false), 5000);
     };
 
     const handleRestartRace = (data) => {
-      // Reset all players positions
+      // Set flag to prevent immediate movement after restart
+      justRestarted.current = true;
+      setTimeout(() => {
+        justRestarted.current = false;
+      }, 200);
+      
+      // Reset velocity and position references first
+      velocityY.current = 0;
+      lastPosRef.current = 0;
+      
+      // Reset all players positions immediately
       setPlayers(prev => {
         const updated = { ...prev };
         Object.keys(updated).forEach(playerId => {
           updated[playerId] = {
             ...updated[playerId],
             x: 0,
-            y: groundY,
+            y: 0,
             isJumping: false
           };
         });
@@ -295,6 +417,23 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       // Show restart notification for players who received the event
       setShowRestartNotification(true);
       createTrackedTimeout(() => setShowRestartNotification(false), 3000);
+      
+      // Force position update to server to ensure synchronization
+      if (myId) {
+        const resetPosition = {
+          x: 0,
+          y: 0,
+          isJumping: false
+        };
+        
+        // Make sure local player has reset position
+        updatePosition(resetPosition);
+        
+        // Send to server after a small delay to ensure local state is updated first
+        setTimeout(() => {
+          socket.emit('update-position', resetPosition);
+        }, 50);
+      }
     };
 
     const handleInit = ({ id, players, trees: serverTrees, obstacles: serverObstacles }) => {
@@ -460,7 +599,6 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
 
     // Register all event listeners
     socket.on('game-settings-updated', handleGameSettingsUpdated);
-    socket.on('race-winner', handleRaceWinner);
     socket.on('restart-race', handleRestartRace);
     socket.on('init', handleInit);
     socket.on('connect', handleConnect);
@@ -495,7 +633,6 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     return () => {
       // Clean up socket listeners
       socket.off('game-settings-updated', handleGameSettingsUpdated);
-      socket.off('race-winner', handleRaceWinner);
       socket.off('restart-race', handleRestartRace);
       socket.off('init', handleInit);
       socket.off('connect', handleConnect);
@@ -856,14 +993,19 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
   // Add the game loop for player movement in a separate useEffect
   useEffect(() => {
     const gameInterval = setInterval(() => {
+      // Skip updates if not properly connected or initialized
+      if (!myId || !socket.connected) {
+        return;
+      }
+
       setPlayers(prev => {
         const me = prev[myId];
         if (!me) return prev;
         let updated = { ...me };
         let isCurrentlyMoving = false;
 
-        // Don't allow movement if the player has finished the race
-        if (!hasFinished) {
+        // Don't allow movement if the player has finished the race or just restarted
+        if (!hasFinished && !justRestarted.current) {
           if (pressedKeys.current['ArrowRight']) {
             // Calculate the new position
             let newX = updated.x + 5;
@@ -917,8 +1059,10 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           // Store position for client-side tracking
           updatePosition(updated);
           
-          // Send position update to server
-          socket.emit('update-position', updated);
+          // Send position update to server only if we're connected
+          if (socket.connected) {
+            socket.emit('update-position', updated);
+          }
           return { ...prev, [myId]: updated };
         }
 
@@ -949,8 +1093,8 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
   // Add this useEffect to track new players and update visiblePlayers accordingly
   useEffect(() => {
     // Listen for the 'new-player' event from the server
-    const handleNewPlayer = ({ id, name, x, y }) => {
-      console.log(`New player joined: ${name} (${id}), position: ${x}, ${y}`);
+    const handleNewPlayer = ({ id, name, x, y, isRequestAccepter }) => {
+      console.log(`New player joined: ${name} (${id}), position: ${x}, ${y}, isRequestAccepter: ${isRequestAccepter}`);
       
       // Add to players list if not already present
       setPlayers(prev => {
@@ -971,6 +1115,11 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       // Add to visiblePlayers set
       visiblePlayers.add(id);
       console.log(`Added player ${id} to visiblePlayers, current list:`, Array.from(visiblePlayers));
+      
+      // Check if this player is tagged as a request accepter
+      if (isRequestAccepter !== undefined && id === myId) {
+        setIsRequestAccepter(isRequestAccepter);
+      }
     };
 
     socket.on('new-player', handleNewPlayer);
@@ -978,7 +1127,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     return () => {
       socket.off('new-player', handleNewPlayer);
     };
-  }, []);
+  }, [myId]); // Add myId to dependencies
 
   // Add this to listen for player movements
   useEffect(() => {
@@ -1022,6 +1171,11 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
 
   // Function to handle game exit
   const handleExitGame = () => {
+    // Skip if buttons are disabled for this player
+    if (isRequestAccepter) {
+      return;
+    }
+    
     // Notify server that player is leaving
     if (myId) {
       socket.emit('player-leave', { playerId: myId });
@@ -1033,6 +1187,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     // Clean up player data from localStorage
     localStorage.removeItem('playerName');
     localStorage.removeItem('isHost');
+    localStorage.removeItem('isRequestSender');
   };
 
   // If user has chosen to exit, return null so parent can redirect
@@ -1042,6 +1197,29 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       onError(new Error('EXIT_GAME'));
     }
   }, [exitGame, onError]);
+
+  // Modify the refresh players function to only affect the local player
+  const refreshLocalPlayer = () => {
+    // Force re-render of myself if I'm missing from players
+    if (myId && playerName) {
+      const newPlayer = { 
+        x: lastKnownPosition.x || 0, 
+        y: lastKnownPosition.y || 0, 
+        name: playerName, 
+        isJumping: false 
+      };
+      
+      console.log("Refreshing local player:", newPlayer);
+      setPlayers(prev => ({...prev, [myId]: newPlayer}));
+      
+      // Re-emit my position to ensure others can see me
+      socket.emit('update-position', newPlayer);
+      
+      // Show notification only to this player
+      setShowErrorMessage("Player refreshed");
+      setTimeout(() => setShowErrorMessage(""), 2000);
+    }
+  };
 
   return (
     <div className="relative">
@@ -1070,114 +1248,99 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
             />
           </div>
 
-          {/* Score/Distance Display */}
-          <div className="absolute top-4 right-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg py-2 px-4 text-white border border-indigo-500">
-            <div className="text-sm font-bold text-yellow-300">Distance</div>
-            <div className="font-mono text-2xl text-white" id="score">
-              {players[myId] ? Math.floor(players[myId].x / 10) : 0} m
-            </div>
-          </div>
-
-          {/* Restart Race Button */}
-          <div className="absolute top-20 right-4">
-            <button 
-              onClick={restartRace}
-              className="bg-gradient-to-r from-red-500 to-orange-500 text-white px-4 py-2 rounded-lg shadow-lg hover:from-red-600 hover:to-orange-600 transform hover:scale-105 transition duration-300 flex items-center glow-pulse"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Restart Race
-            </button>
-          </div>
-          
-          {/* Refresh Players button */}
-          <div className="absolute top-36 right-4">
-            <button 
-              onClick={() => {
-                // Force re-render of myself if I'm missing from players
-                if (myId && !players[myId] && playerName) {
-                  const newPlayer = { x: 0, y: 0, name: playerName, isJumping: false };
-                  console.log("Force adding myself back to players:", newPlayer);
-                  setPlayers(prev => ({...prev, [myId]: newPlayer}));
-                  
-                  // Re-emit my position to ensure others can see me
-                  socket.emit('update-position', newPlayer);
-                }
-              }}
-              className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-4 py-2 rounded-lg shadow-lg hover:from-blue-600 hover:to-indigo-600 transform hover:scale-105 transition duration-300 flex items-center"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh Players
-            </button>
-          </div>
-
-          {/* Exit Game Button */}
-          <div className="absolute top-4 right-36 z-20">
-            <button 
-              onClick={handleExitGame}
-              className="bg-gradient-to-r from-gray-600 to-gray-800 text-white px-4 py-2 rounded-lg shadow-lg hover:from-gray-700 hover:to-gray-900 transform hover:scale-105 transition duration-300 flex items-center"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Exit Game
-            </button>
-          </div>
-
-          {/* Game controls overlay */}
-          <div className="absolute bottom-4 left-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg p-3 text-white text-xs border border-indigo-600">
-            <div className="flex items-center space-x-2 mb-1">
-              <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-              </svg>
-              <span className="font-bold text-indigo-300">CONTROLS:</span>
-            </div>
-            <div className="ml-6 space-y-1">
-              <div className="flex items-center space-x-2">
-                <div className="bg-gray-700 px-2 py-1 rounded text-yellow-300 font-semibold">→</div>
-                <span>Run forward</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="bg-gray-700 px-2 py-1 rounded text-yellow-300 font-semibold">↑</div>
-                <span>Jump</span>
+          {/* Consolidated Game UI Panel - Top right */}
+          <div className="absolute top-4 right-4 flex flex-col space-y-2">
+            {/* Score/Distance Display */}
+            <div className="bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg py-2 px-4 text-white border border-indigo-500">
+              <div className="text-sm font-bold text-yellow-300">Distance</div>
+              <div className="font-mono text-2xl text-white" id="score">
+                {players[myId] ? Math.floor(players[myId].x / 10) : 0} m
               </div>
             </div>
+            
+            {/* Game Controls Panel */}
+            <div className="bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg p-3 border border-indigo-500 flex flex-col space-y-2">
+              {/* Show message for request accepter */}
+              {isRequestAccepter && (
+                <div className="text-amber-300 text-xs mb-1 text-center">
+                  Controls disabled for request accepter
+                </div>
+              )}
+              
+              {/* Exit Game Button */}
+              <button 
+                onClick={handleExitGame}
+                className={`bg-gradient-to-r from-gray-600 to-gray-800 text-white px-4 py-2 rounded-lg shadow-lg ${
+                  isRequestAccepter 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:from-gray-700 hover:to-gray-900 transform hover:scale-105 transition duration-300'
+                } flex items-center justify-center`}
+                disabled={isRequestAccepter}
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Exit
+              </button>
+              
+              {/* Restart Race Button */}
+              <button 
+                onClick={restartRace}
+                className={`bg-gradient-to-r from-red-500 to-orange-500 text-white px-4 py-2 rounded-lg shadow-lg ${
+                  isRequestAccepter 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:from-red-600 hover:to-orange-600 transform hover:scale-105 transition duration-300'
+                } flex items-center justify-center`}
+                disabled={isRequestAccepter}
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {isHost ? "Restart All" : "Restart Game"}
+              </button>
+            </div>
           </div>
 
-          {/* Player info panel */}
-          <div className="absolute top-4 left-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg p-3 text-white text-xs border border-indigo-600">
-            <div className="flex items-center space-x-2 mb-1">
-              <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          {/* Info Panel - Top left */}
+          <div className="absolute top-4 left-4 bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg p-4 text-white border border-indigo-600">
+            {/* Player info */}
+            <div className="flex items-center space-x-2 mb-3">
+              <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
               <span className="font-bold text-indigo-300">PLAYER:</span>
               <span className="text-white">{players[myId]?.name || 'Player'}</span>
             </div>
-            <div className="flex items-center space-x-2">
-              <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            
+            {/* Players count */}
+            <div className="flex items-center space-x-2 mb-3">
+              <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
               <span className="font-bold text-indigo-300">PLAYERS:</span>
               <span className="text-white">{Object.keys(players).length}</span>
             </div>
-          </div>
-
-          {/* Race winner notification */}
-          {showWinnerNotification && raceWinner && (
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-8 py-6 rounded-lg z-50 shadow-lg border-2 border-yellow-500">
-              <div className="flex items-center justify-center space-x-2 text-3xl font-bold mb-4">
-                <svg className="w-10 h-10 text-yellow-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                  <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            
+            {/* Game controls legend */}
+            <div className="pt-2 border-t border-indigo-600">
+              <div className="flex items-center space-x-2 mb-2">
+                <svg className="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
                 </svg>
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-400">WINNER!</span>
+                <span className="font-bold text-indigo-300">CONTROLS:</span>
               </div>
-              <div className="text-center text-xl font-bold mb-2">{raceWinner.name}</div>
-              <p className="text-center text-yellow-200 text-sm">First to reach the finish line!</p>
+              <div className="flex space-x-4 items-center">
+                <div className="flex items-center space-x-1">
+                  <div className="bg-gray-700 px-2 py-1 rounded text-yellow-300 font-semibold">→</div>
+                  <span className="text-sm">Run</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="bg-gray-700 px-2 py-1 rounded text-yellow-300 font-semibold">↑</div>
+                  <span className="text-sm">Jump</span>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
 
           {/* Finish position notification (for non-winners) */}
           {showPositionNotification && finishPosition && (
@@ -1214,7 +1377,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
                 </svg>
                 <span>Race Restarted!</span>
               </div>
-              <p className="text-center mt-2 text-yellow-200">All players moved to starting line</p>
+              <p className="text-center mt-2 text-yellow-200">All players moved to starting line (0m)</p>
             </div>
           )}
 
@@ -1308,52 +1471,6 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               Player Missing! Click to debug
             </div>
           )}
-
-          {/* Debug button to show player state */}
-          <div className="absolute top-52 right-4">
-            <button 
-              onClick={() => {
-                console.log("Current game state:", {
-                  myId,
-                  allPlayers: players,
-                  visiblePlayersList: Array.from(visiblePlayers),
-                  playerCount: Object.keys(players).length,
-                  visibleCount: visiblePlayers.size
-                });
-                
-                // Show a temporary message
-                setShowErrorMessage("Check console for debug info");
-                setTimeout(() => setShowErrorMessage(""), 2000);
-              }}
-              className="bg-gradient-to-r from-green-500 to-teal-500 text-white px-4 py-2 rounded-lg shadow-lg hover:from-green-600 hover:to-teal-600 transform hover:scale-105 transition duration-300 flex items-center"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Debug Info
-            </button>
-          </div>
-          
-          {/* Sync Players button - force reconnection */}
-          <div className="absolute top-68 right-4">
-            <button 
-              onClick={() => {
-                // Force reconnection to sync all players
-                socket.disconnect();
-                setTimeout(() => socket.connect(), 500);
-                
-                // Show a temporary message
-                setShowErrorMessage("Reconnecting to sync players...");
-                setTimeout(() => setShowErrorMessage(""), 2000);
-              }}
-              className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-4 py-2 rounded-lg shadow-lg hover:from-yellow-600 hover:to-orange-600 transform hover:scale-105 transition duration-300 flex items-center mt-4"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Sync All Players
-            </button>
-          </div>
         </div>
       </div>
       {myId && <AddPlayerById myId={myId} />}

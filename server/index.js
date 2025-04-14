@@ -206,9 +206,26 @@ io.on('connection', socket => {
   // Position updates - Add server-side validation and position tracking
   socket.on('update-position', data => {
     try {
-      if (!socket.customId || !players[socket.customId]) {
-        console.warn(`Position update from unknown player or missing socket.customId`);
+      // First check if the customId exists on the socket
+      if (!socket.customId) {
+        console.warn(`Position update received before socket has a customId assigned`);
         return;
+      }
+
+      // Initialize the player if they don't exist yet but have a customId
+      if (!players[socket.customId]) {
+        console.log(`Creating missing player for ${socket.customId} during position update`);
+        players[socket.customId] = { 
+          x: 0, 
+          y: 0, 
+          name: `Player-${socket.customId.substring(0, 5)}`,
+          isJumping: false 
+        };
+
+        // Make sure visibility is initialized
+        if (!playerVisibility[socket.customId]) {
+          playerVisibility[socket.customId] = new Set([socket.customId]);
+        }
       }
 
       // Validate data format
@@ -344,11 +361,13 @@ io.on('connection', socket => {
       playerRaceState[playerId].finishTime = raceStatus.finishTime;
       playerRaceState[playerId].position = 1; // First place
       
-      // Broadcast winner to all players
+      // Broadcast winner to all players - disable this to remove the 1000m announcements
+      /*
       io.emit('race-winner', {
         playerId: playerId,
         playerName: raceWinner.name
       });
+      */
     } else {
       // Player finished but wasn't first
       // Record their finish for future position tracking
@@ -421,6 +440,7 @@ io.on('connection', socket => {
         // Skip players who are disconnected
         if (players[playerId].disconnectedAt) return;
         
+        // Reset player position
         players[playerId].x = 0;
         players[playerId].y = 0;
         players[playerId].isJumping = false;
@@ -438,8 +458,43 @@ io.on('connection', socket => {
       // Broadcast race restart to ALL connected players
       io.emit('restart-race', {
         startTime: raceStatus.startTime,
-        distance: raceDistance
+        distance: raceDistance,
+        fromHost: true
       });
+      
+      // Force position update to all connected players to ensure synchronization
+      setTimeout(() => {
+        Object.keys(players).forEach(playerId => {
+          // Skip disconnected players
+          if (players[playerId].disconnectedAt) return;
+          
+          // Find the socket associated with this player
+          const playerSocket = findSocketByCustomId(playerId);
+          if (playerSocket) {
+            // Send position validation to each player
+            playerSocket.emit('position-validated', {
+              id: playerId,
+              x: 0,
+              y: 0
+            });
+            
+            // Broadcast the reset position to players who can see this player
+            if (playerVisibility[playerId]) {
+              playerVisibility[playerId].forEach(visibleToId => {
+                if (visibleToId !== playerId) {
+                  io.to(visibleToId).emit('player-moved', {
+                    id: playerId,
+                    x: 0,
+                    y: 0,
+                    isJumping: false,
+                    name: players[playerId].name
+                  });
+                }
+              });
+            }
+          }
+        });
+      }, 200); // Small delay to ensure restart-race event is processed first
     } else {
       // Notify the player they don't have permission to restart
       socket.emit('error-message', {
@@ -552,7 +607,8 @@ io.on('connection', socket => {
         // Notify the joining player that their request was accepted
         io.to(playerId).emit('request-accepted', {
           hostId: socket.customId,
-          hostName: players[socket.customId].name
+          hostName: players[socket.customId].name,
+          isRequestSender: true
         });
         
         // Send each player's info to the other
@@ -560,14 +616,16 @@ io.on('connection', socket => {
           id: playerId,
           name: players[playerId].name,
           x: players[playerId].x,
-          y: players[playerId].y
+          y: players[playerId].y,
+          isRequestAccepter: true
         });
         
         io.to(playerId).emit('new-player', {
           id: socket.customId,
           name: players[socket.customId].name,
           x: players[socket.customId].x,
-          y: players[socket.customId].y
+          y: players[socket.customId].y,
+          isRequestAccepter: false
         });
         
         // Notify both sides that the player is now visible

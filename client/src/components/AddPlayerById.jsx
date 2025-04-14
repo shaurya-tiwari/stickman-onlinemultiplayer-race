@@ -29,14 +29,19 @@ const AddPlayerById = ({ myId }) => {
     });
 
     // Listen for acceptance/rejection responses
-    socket.on('request-accepted', () => {
-      console.log('Join request was accepted!');
+    socket.on('request-accepted', ({ isRequestSender }) => {
+      console.log('Join request was accepted!', isRequestSender ? '(You are the request sender)' : '');
       setMessage('Join request accepted!');
       setMessageType('success');
       setTimeout(() => {
         setShowPopup(false);
         setMessage('');
       }, 2000);
+      
+      // Store in localStorage that this player is a request sender
+      if (isRequestSender) {
+        localStorage.setItem('isRequestSender', 'true');
+      }
     });
 
     socket.on('request-rejected', () => {
