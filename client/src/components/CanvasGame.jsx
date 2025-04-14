@@ -824,14 +824,6 @@ const CanvasGame = ({ playerName, isHost }) => {
                   // Re-emit my position to ensure others can see me
                   socket.emit('update-position', newPlayer);
                 }
-                
-                // If I'm a host, request host status info again
-                if (isHost && myId) {
-                  console.log("Re-requesting host status...");
-                  safeEmit('become-host', {}, (response) => {
-                    console.log("Host status re-request response:", response);
-                  });
-                }
               }}
               className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-4 py-2 rounded-lg shadow-lg hover:from-blue-600 hover:to-indigo-600 transform hover:scale-105 transition duration-300 flex items-center"
             >

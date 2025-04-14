@@ -44,21 +44,6 @@ const GameSettings = ({ myId }) => {
     };
   }, [myId]);
 
-  const handleBecomeHost = () => {
-    safeEmit('become-host', {}, (response) => {
-      if (response.success) {
-        setIsHost(true);
-        setMessage('You are now the host!');
-        setMessageType('success');
-        setTimeout(() => setMessage(''), 3000);
-      } else {
-        setMessage(response.message || 'Failed to become host');
-        setMessageType('error');
-        setTimeout(() => setMessage(''), 3000);
-      }
-    });
-  };
-
   const handleUpdateSettings = (e) => {
     e.preventDefault();
     
@@ -74,11 +59,6 @@ const GameSettings = ({ myId }) => {
         setMessageType('success');
         setShowSettings(false);
         setTimeout(() => setMessage(''), 3000);
-        
-        // Re-request host status to ensure we stay visible
-        safeEmit('become-host', {}, (hostResponse) => {
-          console.log('Re-request host status response:', hostResponse);
-        });
       } else {
         setMessage(response.message || 'Failed to update settings');
         setMessageType('error');
@@ -89,27 +69,40 @@ const GameSettings = ({ myId }) => {
 
   return (
     <div className="fixed top-20 left-6 z-20">
-      {/* Host button/indicator */}
-      <div 
-        className={`bg-gradient-to-r ${isHost ? 'from-amber-500 to-orange-600' : 'from-purple-600 to-pink-700'} text-white px-4 py-3 rounded-xl shadow-xl cursor-pointer transform hover:scale-105 transition duration-300 flex items-center`}
-        onClick={() => isHost ? setShowSettings(true) : handleBecomeHost()}
-        style={{
-          boxShadow: isHost ? '0 0 15px rgba(245, 158, 11, 0.7)' : '0 0 15px rgba(147, 51, 234, 0.6)'
-        }}
-      >
-        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-        {isHost ? 'Race Settings' : 'Become Host'}
-      </div>
+      {/* Only show race settings button for hosts */}
+      {isHost ? (
+        <>
+          <div 
+            className="bg-gradient-to-r from-amber-500 to-orange-600 text-white px-4 py-3 rounded-xl shadow-xl cursor-pointer transform hover:scale-105 transition duration-300 flex items-center"
+            onClick={() => setShowSettings(true)}
+            style={{
+              boxShadow: '0 0 15px rgba(245, 158, 11, 0.7)'
+            }}
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Race Settings
+          </div>
 
-      {/* Race distance indicator */}
-      <div className="mt-4 bg-black bg-opacity-60 backdrop-filter backdrop-blur-lg rounded-xl py-2 px-4 text-white border border-purple-500 border-opacity-30">
-        <div className="text-sm font-bold text-amber-300">Race Finish Line</div>
-        <div className="font-mono text-white">
-          {raceDistance}m
+          {/* Race distance indicator */}
+          <div className="mt-4 bg-black bg-opacity-60 backdrop-filter backdrop-blur-lg rounded-xl py-2 px-4 text-white border border-purple-500 border-opacity-30">
+            <div className="text-sm font-bold text-amber-300">Race Finish Line</div>
+            <div className="font-mono text-white">
+              {raceDistance}m
+            </div>
+          </div>
+        </>
+      ) : (
+        // Only race distance indicator for non-hosts
+        <div className="bg-black bg-opacity-60 backdrop-filter backdrop-blur-lg rounded-xl py-2 px-4 text-white border border-purple-500 border-opacity-30">
+          <div className="text-sm font-bold text-amber-300">Race Finish Line</div>
+          <div className="font-mono text-white">
+            {raceDistance}m
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Host settings popup */}
       {showSettings && (
