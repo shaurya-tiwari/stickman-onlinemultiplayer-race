@@ -1324,9 +1324,8 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
             const playerMoving = id === myId ? isMoving : false;
 
             // Ensure player stays within canvas boundaries for display
-            const constrainedX = Math.max(0, Math.min(drawX, ctx.canvas.width - 30));
-            const constrainedY = Math.max(0, Math.min(roadY - 60 - player.y, ctx.canvas.height - 60));
-            
+            const constrainedX = Math.max(0, Math.min(drawX, 770)); // 800 - player width (30px)
+            const constrainedY = Math.max(0, Math.min(roadY - 60 - player.y, 540)); // 600 - player height (60px)
 
             // Create a more reliable animation approach
             const getPlayerStyle = () => {
