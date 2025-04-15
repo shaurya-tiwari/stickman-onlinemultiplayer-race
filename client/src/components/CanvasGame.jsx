@@ -1393,7 +1393,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       <div className="fixed bottom-0 left-0 w-150 z-50 pointer-events-none">
         {/* Jump area - Left */}
         <div
-          className="absolute bottom-50 left-0 w-1/2 h-2/3 p-4 flex items-end justify-center pointer-events-auto"
+          className="absolute bg-green-200 bottom-50 left-0 w-1/2 h-2/3 p-4 flex items-end justify-center pointer-events-auto"
           onTouchStart={() => { pressedKeys.current['ArrowUp'] = true; }}
           onTouchEnd={() => { pressedKeys.current['ArrowUp'] = false; }}
         >
@@ -1403,7 +1403,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
 
       {/* Run area - Right */}
       <div
-        className="absolute bottom-50 right-0 w-1/2 h-2/3 p-4 flex items-end justify-center pointer-events-auto"
+        className="absolute  bg-green-200 bottom-50 right-0 w-1/2 h-2/3 p-4 flex items-end justify-center pointer-events-auto"
         onTouchStart={() => { pressedKeys.current['ArrowRight'] = true; }}
         onTouchEnd={() => { pressedKeys.current['ArrowRight'] = false; }}
       >
