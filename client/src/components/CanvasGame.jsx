@@ -2,11 +2,11 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import PlayerIdDisplay from './PlayerIdDisplay';
 import AddPlayerById from './AddPlayerById';
 import GameSettings from './GameSettings';
-import socket, { 
-  isPlayerVisible, 
-  visiblePlayers, 
-  safeEmit, 
-  updatePosition, 
+import socket, {
+  isPlayerVisible,
+  visiblePlayers,
+  safeEmit,
+  updatePosition,
   lastKnownPosition,
   addGlobalEventListener,
   cleanupGlobalEventListeners
@@ -103,16 +103,16 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
   const errorMessageTimer = useRef(null);
   // Create a ref to track all timeouts for proper cleanup
   const timeoutsRef = useRef([]);
-  
+
   // Add a new state to track if player is request accepter
   const [isRequestAccepter, setIsRequestAccepter] = useState(false);
-  
+
   // Error handling for canvas rendering issues
   const [canvasError, setCanvasError] = useState(false);
-  
+
   // Add a new state to track when user wants to exit
   const [exitGame, setExitGame] = useState(false);
-  
+
   // Helper function to create and track timeouts - defined outside useEffect
   const createTrackedTimeout = useCallback((callback, delay) => {
     const id = setTimeout(callback, delay);
@@ -128,14 +128,14 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         console.error('Missing player name');
         if (onError) onError(new Error('Missing player name'));
       }
-      
+
       // Make sure we can render the canvas
       if (!canvasRef.current) {
         console.error('Canvas element not available');
         setCanvasError(true);
         if (onError) onError(new Error('Canvas initialization failed'));
       }
-      
+
       // Check if the player is a request sender from localStorage
       const isRequestSender = localStorage.getItem('isRequestSender') === 'true';
       if (isRequestSender) {
@@ -149,16 +149,16 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       if (onError) onError(error);
     }
   }, [playerName, onError]);
-  
+
   // Handle global errors and pass them up to the parent
   useEffect(() => {
     const handleGlobalError = (event) => {
       console.error('Error caught in CanvasGame:', event.error || event);
       if (onError) onError(event.error || new Error('Game error'));
     };
-    
+
     window.addEventListener('error', handleGlobalError);
-    
+
     return () => {
       window.removeEventListener('error', handleGlobalError);
     };
@@ -170,13 +170,13 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     if (isRequestAccepter) {
       return;
     }
-    
+
     // Set flag to prevent immediate movement after restart
     justRestarted.current = true;
     setTimeout(() => {
       justRestarted.current = false;
     }, 200);
-    
+
     // Only the host can restart the global race
     if (myId && isHost) {
       // Clear any finish states
@@ -185,14 +185,14 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       setShowWinnerNotification(false);
       setFinishPosition(null);
       setShowPositionNotification(false);
-      
+
       // Reset local velocity and position references
       velocityY.current = 0;
       lastPosRef.current = 0;
-      
+
       // Emit restart race event to reset all players
       socket.emit('restart-race');
-      
+
       // Set our own position to ensure synchronization
       setPlayers(prev => {
         const updated = { ...prev };
@@ -206,14 +206,14 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         }
         return updated;
       });
-      
+
       // Explicitly send position update to server - use exact 0 positions
       const resetPosition = {
         x: 0,
         y: 0,
         isJumping: false
       };
-      
+
       // Force immediate update locally first
       setPlayers(prev => {
         const updated = { ...prev };
@@ -227,10 +227,10 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         }
         return updated;
       });
-      
+
       // Force immediate update to the server
       socket.emit('update-position', resetPosition);
-      
+
       // Ensure we're at exactly position 0
       updatePosition(resetPosition);
     } else {
@@ -248,30 +248,30 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         }
         return updated;
       });
-      
+
       // Reset velocity and position references
       velocityY.current = 0;
       lastPosRef.current = 0;
-      
+
       // Reset race status only for this player
       setHasFinished(false);
       setShowWinnerNotification(false);
       setFinishPosition(null);
       setShowPositionNotification(false);
-      
+
       // Explicitly send position update to server - use exact 0 positions
       const resetPosition = {
         x: 0,
         y: 0,
         isJumping: false
       };
-      
+
       // Force immediate update to the server
       socket.emit('update-position', resetPosition);
-      
+
       // Ensure we're at exactly position 0
       updatePosition(resetPosition);
-      
+
       // Show notification only to this player
       setShowErrorMessage("Game restarted");
       setTimeout(() => setShowErrorMessage(""), 2000);
@@ -292,30 +292,30 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
   const validateRaceFinish = (x) => {
     // If already finished, no need to validate again
     if (hasFinished) return false;
-    
+
     // Check if player has actually reached the finish line
     if (x >= raceDistance) {
       // Prevent cheating by large position jumps
       const lastPosValue = lastPosRef.current || 0;
       const maxJump = 20; // Maximum allowed jump in position between updates
-      
+
       // If the jump is too large, it might be cheating
       if (x - lastPosValue > maxJump) {
         console.warn(`Suspicious finish: Jumped from ${lastPosValue} to ${x}`);
         // Don't count this as a finish, reset to last valid position
         return false;
       }
-      
+
       setHasFinished(true);
       // Notify the server that this player has finished with validated position
-      socket.emit('player-finished', { 
+      socket.emit('player-finished', {
         playerName: players[myId]?.name || 'Unknown Player',
         position: x
       });
-      
+
       return true;
     }
-    
+
     return false;
   };
 
@@ -325,7 +325,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       console.log("Auto-requesting host status as user selected 'Enter as Host'");
       safeEmit('become-host', {}, (response) => {
         console.log("Host status response:", response);
-        
+
         // Ensure host player is added to the players state if not already there
         if (response.success) {
           setPlayers(prev => {
@@ -379,11 +379,11 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       setTimeout(() => {
         justRestarted.current = false;
       }, 200);
-      
+
       // Reset velocity and position references first
       velocityY.current = 0;
       lastPosRef.current = 0;
-      
+
       // Reset all players positions immediately
       setPlayers(prev => {
         const updated = { ...prev };
@@ -397,14 +397,14 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         });
         return updated;
       });
-      
+
       // Reset race status
       setRaceWinner(null);
       setHasFinished(false);
       setShowWinnerNotification(false);
       setFinishPosition(null);
       setShowPositionNotification(false);
-      
+
       // Update race status with data from server
       if (data) {
         setRaceStatus({
@@ -413,11 +413,11 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           distance: data.distance
         });
       }
-      
+
       // Show restart notification for players who received the event
       setShowRestartNotification(true);
       createTrackedTimeout(() => setShowRestartNotification(false), 3000);
-      
+
       // Force position update to server to ensure synchronization
       if (myId) {
         const resetPosition = {
@@ -425,10 +425,10 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           y: 0,
           isJumping: false
         };
-        
+
         // Make sure local player has reset position
         updatePosition(resetPosition);
-        
+
         // Send to server after a small delay to ensure local state is updated first
         setTimeout(() => {
           socket.emit('update-position', resetPosition);
@@ -439,7 +439,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     const handleInit = ({ id, players, trees: serverTrees, obstacles: serverObstacles }) => {
       console.log(`Init received with ID: ${id}, players:`, players);
       setMyId(id);
-      
+
       // IMPORTANT: Merge instead of replacing players to avoid losing existing players
       setPlayers(prev => {
         const merged = { ...prev, ...players };
@@ -463,10 +463,10 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         let errors = 0;
         const temp = [];
         const totalImages = serverTrees.length;
-        
+
         serverTrees.forEach(tree => {
           const img = new Image();
-          
+
           img.onload = () => {
             loaded++;
             temp.push({ x: tree.x, image: img });
@@ -474,7 +474,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               setTrees(temp);
             }
           };
-          
+
           img.onerror = () => {
             console.error(`Failed to load tree image: ${tree.image}`);
             errors++;
@@ -483,11 +483,11 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               setTrees(temp);
             }
           };
-          
+
           // Set src after adding event handlers
           img.src = treeMap[tree.image] || treeMap['tree.png']; // Fallback to default
         });
-        
+
         // Safety timeout to ensure trees are set even if some images fail to load
         const safetyTimer = setTimeout(() => {
           if (temp.length > 0 && temp.length < totalImages) {
@@ -495,7 +495,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
             setTrees(temp);
           }
         }, 3000); // 3 second timeout
-        
+
         // Add to tracked timeouts
         timeoutsRef.current.push(safetyTimer);
       }
@@ -512,10 +512,10 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       let errors = 0;
       const temp = [];
       const totalImages = serverObstacles.length;
-      
+
       serverObstacles.forEach(ob => {
         const img = new Image();
-        
+
         img.onload = () => {
           loaded++;
           temp.push({ x: ob.x, image: img });
@@ -523,7 +523,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
             setObstacles(temp);
           }
         };
-        
+
         img.onerror = () => {
           console.error(`Failed to load obstacle image: ${ob.image}`);
           errors++;
@@ -532,11 +532,11 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
             setObstacles(temp);
           }
         };
-        
+
         // Set src after adding event handlers
         img.src = obstacleMap[ob.image] || obstacleMap['rock.png']; // Fallback to default
       });
-      
+
       // Safety timeout to ensure obstacles are set even if some images fail to load
       const safetyTimer = setTimeout(() => {
         if (temp.length > 0 && temp.length < totalImages) {
@@ -544,7 +544,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           setObstacles(temp);
         }
       }, 3000); // 3 second timeout
-      
+
       timeoutsRef.current.push(safetyTimer);
     };
 
@@ -553,7 +553,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       setIsReconnecting(false);
       reconnectionAttempts.current = 0;
     };
-    
+
     const handleDisconnect = () => {
       console.log('Disconnected from server, attempting to reconnect...');
       setIsReconnecting(true);
@@ -568,8 +568,8 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     };
 
     const handlePositionCorrection = ({ x, y }) => {
-      console.log(`Server position correction received: ${x}, ${y}`);
-      
+      // console.log(`Server position correction received: ${x}, ${y}`);
+
       // Update our position to match server's validated position
       setPlayers(prev => {
         if (prev[myId]) {
@@ -583,17 +583,17 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         }
         return prev;
       });
-      
+
       // Show collision bounce animation
       setCollisionBounce(true);
       if (collisionTimer.current) {
         clearTimeout(collisionTimer.current);
       }
-      
+
       collisionTimer.current = setTimeout(() => {
         setCollisionBounce(false);
       }, 500);
-      
+
       timeoutsRef.current.push(collisionTimer.current);
     };
 
@@ -620,7 +620,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       if (['ArrowRight', 'ArrowUp'].includes(e.key)) {
         pressedKeys.current[e.key] = false;
       }
-      
+
       if (!pressedKeys.current['ArrowRight'] && !pressedKeys.current['ArrowUp']) {
         setIsMoving(false);
       }
@@ -639,15 +639,15 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       socket.off('disconnect', handleDisconnect);
       socket.off('position-validated', handlePositionValidated);
       socket.off('position-correction', handlePositionCorrection);
-      
+
       // Clean up keyboard listeners
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
-      
+
       // Clear all timeouts
       timeoutsRef.current.forEach(clearTimeout);
       timeoutsRef.current = [];
-      
+
       if (collisionTimer.current) {
         clearTimeout(collisionTimer.current);
       }
@@ -657,23 +657,23 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
   useEffect(() => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
-    
+
     // Pre-load and cache all images to avoid reloading them every frame
     // Create a single instance of each image that we'll reuse
     const treeImagesCache = {};
     const obstacleImagesCache = {};
-    
+
     // Track loading state
     let isComponentMounted = true;
-    
+
     // Load tree images
     const loadTreeImages = async () => {
       for (const [key, src] of Object.entries(treeMap)) {
         if (!isComponentMounted) return;
-        
+
         try {
           const img = new Image();
-          
+
           await new Promise((resolve, reject) => {
             img.onload = resolve;
             img.onerror = () => {
@@ -681,8 +681,8 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               reject(new Error(`Failed to load tree image: ${key}`));
             };
             img.src = src;
-          }).catch(() => {}); // Catch errors but continue loading other images
-          
+          }).catch(() => { }); // Catch errors but continue loading other images
+
           if (isComponentMounted) {
             treeImagesCache[key] = img;
           }
@@ -691,15 +691,15 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         }
       }
     };
-    
+
     // Load obstacle images
     const loadObstacleImages = async () => {
       for (const [key, src] of Object.entries(obstacleMap)) {
         if (!isComponentMounted) return;
-        
+
         try {
           const img = new Image();
-          
+
           await new Promise((resolve, reject) => {
             img.onload = resolve;
             img.onerror = () => {
@@ -707,8 +707,8 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               reject(new Error(`Failed to load obstacle image: ${key}`));
             };
             img.src = src;
-          }).catch(() => {}); // Catch errors but continue loading other images
-          
+          }).catch(() => { }); // Catch errors but continue loading other images
+
           if (isComponentMounted) {
             obstacleImagesCache[key] = img;
           }
@@ -717,19 +717,19 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         }
       }
     };
-    
+
     // Start loading images
     loadTreeImages();
     loadObstacleImages();
 
     const draw = () => {
       if (!ctx || !isComponentMounted) return;
-      
+
       ctx.clearRect(0, 0, 800, 600);
       const me = players[myId];
       const cameraOffset = me ? me.x - fixedPlayerX : 0;
       const roadY = 400;
-      
+
       // Visible area boundaries with buffer
       const visibleLeft = cameraOffset - 50;
       const visibleRight = cameraOffset + 850;
@@ -747,7 +747,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         // Only draw clouds if they're in the visible area plus buffer
         const drawX = x - cameraOffset * 0.2; // Parallax effect
         if (drawX < -200 || drawX > 1000) return; // Skip if not visible
-        
+
         ctx.save();
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.beginPath();
@@ -788,9 +788,9 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       trees.forEach(({ x, image }) => {
         // Skip trees outside the visible area for performance
         if (x < visibleLeft - 200 || x > visibleRight + 200) return;
-        
+
         const drawX = x - cameraOffset;
-        
+
         // Tree shadow
         ctx.save();
         ctx.globalAlpha = 0.4;
@@ -799,7 +799,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         ctx.ellipse(drawX + 120, roadY + 10, 60, 15, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-        
+
         // Tree image - use cached image if available or fall back to the one in the tree object
         const treeImg = image.src ? image : treeImagesCache[image] || image;
         ctx.drawImage(treeImg, drawX + 40, roadY - 280, 200, 280);
@@ -809,9 +809,9 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       obstacles.forEach(({ x, image }) => {
         // Skip obstacles outside the visible area for performance
         if (x < visibleLeft - 60 || x > visibleRight + 60) return;
-        
+
         const drawX = x - cameraOffset;
-        
+
         // Obstacle shadow
         ctx.save();
         ctx.globalAlpha = 0.5;
@@ -820,7 +820,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         ctx.ellipse(drawX + 30, roadY + 8, 25, 8, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-        
+
         // Obstacle image - use cached image if available or fall back to the one in the obstacle object
         const obstacleImg = image.src ? image : obstacleImagesCache[image] || image;
         ctx.drawImage(obstacleImg, drawX, roadY - 60, 60, 60);
@@ -831,20 +831,20 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       if (finishLineX >= -100 && finishLineX <= 900) {
         // Checkered pattern for finish line
         ctx.save();
-        
+
         // Draw the finish line pole
         ctx.fillStyle = '#222222';
         ctx.fillRect(finishLineX - 5, roadY - 150, 10, 150);
-        
+
         // Draw the finish banner
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
         ctx.fillRect(finishLineX - 5, roadY - 150, 200, 40);
-        
+
         // Draw the FINISH text
         ctx.font = 'bold 30px Arial';
         ctx.fillStyle = '#FFFFFF';
         ctx.fillText('FINISH', finishLineX + 10, roadY - 120);
-        
+
         // Draw checkered pattern on the road
         const squareSize = 15;
         const checkerWidth = 60;
@@ -856,14 +856,14 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               ctx.fillStyle = '#000000';
             }
             ctx.fillRect(
-              finishLineX + (i * squareSize) - checkerWidth / 2, 
-              roadY - 3 + (j * squareSize), 
-              squareSize, 
+              finishLineX + (i * squareSize) - checkerWidth / 2,
+              roadY - 3 + (j * squareSize),
+              squareSize,
               squareSize
             );
           }
         }
-        
+
         ctx.restore();
       }
 
@@ -873,19 +873,19 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         const playerX = me.x;
         const playerWidth = 30;
         const proximityThreshold = 100; // Only check obstacles within this range
-        
+
         // Filter to only obstacles near the player
-        const nearbyObstacles = obstacles.filter(ob => 
+        const nearbyObstacles = obstacles.filter(ob =>
           Math.abs(ob.x - playerX) < proximityThreshold
         );
-        
+
         // Check collisions only with nearby obstacles
         for (const ob of nearbyObstacles) {
           const obsStart = ob.x;
           const obsEnd = ob.x + 60; // Obstacle width is 60px
           const playerLeft = playerX;
           const playerRight = playerX + playerWidth;
-          
+
           // Check for collision with obstacle - more precise hitbox
           if (playerRight > obsStart + 10 && playerLeft < obsEnd - 10) {
             // Apply a small bounce back for more realistic physics
@@ -901,7 +901,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       if (me) {
         const worldLeft = 0;
         const worldRight = maxX;
-        
+
         if (me.x < worldLeft) {
           setPlayers(prev => ({ ...prev, [myId]: { ...me, x: worldLeft } }));
           socket.emit('update-position', { ...me, x: worldLeft });
@@ -918,16 +918,16 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       draw();
       animationFrameId = requestAnimationFrame(animate);
     };
-    
+
     // Start the animation
     animationFrameId = requestAnimationFrame(animate);
-    
+
     return () => {
       isComponentMounted = false;
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
       }
-      
+
       // Clear image caches to prevent memory leaks
       Object.keys(treeImagesCache).forEach(key => delete treeImagesCache[key]);
       Object.keys(obstacleImagesCache).forEach(key => delete obstacleImagesCache[key]);
@@ -944,49 +944,49 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     // If myId exists but the player isn't in the players state, recover it
     if (myId && !players[myId] && playerName) {
       console.log(`Player ${myId} is missing from state, recovering...`);
-      
+
       // Create a new player object with default values
-      const recoveredPlayer = { 
-        x: lastKnownPosition.x || 0, 
-        y: lastKnownPosition.y || 0, 
+      const recoveredPlayer = {
+        x: lastKnownPosition.x || 0,
+        y: lastKnownPosition.y || 0,
         name: playerName,
-        isJumping: false 
+        isJumping: false
       };
-      
+
       // Update the state
       setPlayers(prev => ({
         ...prev,
         [myId]: recoveredPlayer
       }));
-      
+
       // Send the recovered position to the server
       socket.emit('update-position', recoveredPlayer);
-      
+
       // Report the recovery for debugging
       console.log(`Recovered player ${myId} with position:`, recoveredPlayer);
     }
   }, [myId, players, playerName]);
-  
+
   // Add auto-refresh mechanism for visibility issues
   useEffect(() => {
     const visibilityCheckInterval = setInterval(() => {
       // Check if we should be visible but aren't
       if (myId && !players[myId] && Object.keys(players).length > 0) {
         console.log("Visibility issue detected, refreshing player state");
-        
+
         // Force re-render of myself
-        const newPlayer = { 
-          x: lastKnownPosition.x || 0, 
-          y: lastKnownPosition.y || 0, 
+        const newPlayer = {
+          x: lastKnownPosition.x || 0,
+          y: lastKnownPosition.y || 0,
           name: playerName,
-          isJumping: false 
+          isJumping: false
         };
-        
-        setPlayers(prev => ({...prev, [myId]: newPlayer}));
+
+        setPlayers(prev => ({ ...prev, [myId]: newPlayer }));
         socket.emit('update-position', newPlayer);
       }
     }, 5000); // Check every 5 seconds
-    
+
     return () => clearInterval(visibilityCheckInterval);
   }, [myId, players, playerName]);
 
@@ -1009,10 +1009,10 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           if (pressedKeys.current['ArrowRight']) {
             // Calculate the new position
             let newX = updated.x + 5;
-            
+
             // Track the last position for validation
             lastPosRef.current = updated.x;
-            
+
             // Add boundary check for right movement
             newX = Math.min(newX, maxX);
             updated.x = newX;
@@ -1058,7 +1058,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         if (updated.x !== me.x || updated.y !== me.y) {
           // Store position for client-side tracking
           updatePosition(updated);
-          
+
           // Send position update to server only if we're connected
           if (socket.connected) {
             socket.emit('update-position', updated);
@@ -1080,7 +1080,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       <div className="flex flex-col items-center justify-center p-8 bg-red-800 bg-opacity-25 rounded-lg">
         <h2 className="text-xl font-bold mb-4 text-white">Canvas Error</h2>
         <p className="text-white mb-4">There was a problem initializing the game canvas.</p>
-        <button 
+        <button
           className="bg-blue-600 px-4 py-2 rounded-lg text-white font-bold"
           onClick={() => window.location.reload()}
         >
@@ -1095,7 +1095,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     // Listen for the 'new-player' event from the server
     const handleNewPlayer = ({ id, name, x, y, isRequestAccepter }) => {
       console.log(`New player joined: ${name} (${id}), position: ${x}, ${y}, isRequestAccepter: ${isRequestAccepter}`);
-      
+
       // Add to players list if not already present
       setPlayers(prev => {
         if (!prev[id]) {
@@ -1115,7 +1115,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       // Add to visiblePlayers set
       visiblePlayers.add(id);
       console.log(`Added player ${id} to visiblePlayers, current list:`, Array.from(visiblePlayers));
-      
+
       // Check if this player is tagged as a request accepter
       if (isRequestAccepter !== undefined && id === myId) {
         setIsRequestAccepter(isRequestAccepter);
@@ -1123,7 +1123,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     };
 
     socket.on('new-player', handleNewPlayer);
-    
+
     return () => {
       socket.off('new-player', handleNewPlayer);
     };
@@ -1134,7 +1134,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     const handlePlayerMoved = ({ id, x, y, isJumping, name }) => {
       // Ensure the player is in our visible players list
       visiblePlayers.add(id);
-      
+
       // Update player position
       setPlayers(prev => {
         if (prev[id]) {
@@ -1142,28 +1142,28 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
             ...prev,
             [id]: {
               ...prev[id],
-              x, 
+              x,
               y,
               isJumping,
               name: name || prev[id].name
             }
           };
-        } 
+        }
         // If player doesn't exist, add them
         return {
           ...prev,
-          [id]: { 
-            x, 
-            y, 
-            isJumping, 
-            name: name || `Player-${id.substring(0, 5)}` 
+          [id]: {
+            x,
+            y,
+            isJumping,
+            name: name || `Player-${id.substring(0, 5)}`
           }
         };
       });
     };
-    
+
     socket.on('player-moved', handlePlayerMoved);
-    
+
     return () => {
       socket.off('player-moved', handlePlayerMoved);
     };
@@ -1175,15 +1175,15 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
     if (isRequestAccepter) {
       return;
     }
-    
+
     // Notify server that player is leaving
     if (myId) {
       socket.emit('player-leave', { playerId: myId });
     }
-    
+
     // Set exit state to true - will be handled by parent component
     setExitGame(true);
-    
+
     // Clean up player data from localStorage
     localStorage.removeItem('playerName');
     localStorage.removeItem('isHost');
@@ -1202,19 +1202,19 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
   const refreshLocalPlayer = () => {
     // Force re-render of myself if I'm missing from players
     if (myId && playerName) {
-      const newPlayer = { 
-        x: lastKnownPosition.x || 0, 
-        y: lastKnownPosition.y || 0, 
-        name: playerName, 
-        isJumping: false 
+      const newPlayer = {
+        x: lastKnownPosition.x || 0,
+        y: lastKnownPosition.y || 0,
+        name: playerName,
+        isJumping: false
       };
-      
+
       console.log("Refreshing local player:", newPlayer);
-      setPlayers(prev => ({...prev, [myId]: newPlayer}));
-      
+      setPlayers(prev => ({ ...prev, [myId]: newPlayer }));
+
       // Re-emit my position to ensure others can see me
       socket.emit('update-position', newPlayer);
-      
+
       // Show notification only to this player
       setShowErrorMessage("Player refreshed");
       setTimeout(() => setShowErrorMessage(""), 2000);
@@ -1240,10 +1240,10 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               width={800}
               height={600}
               className="rounded-lg bg-white"
-              style={{ 
+              style={{
                 boxShadow: 'inset 0 0 20px 10px rgba(0, 0, 0, 0.3)',
                 borderRadius: '8px',
-                overflow: 'hidden' 
+                overflow: 'hidden'
               }}
             />
           </div>
@@ -1257,7 +1257,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
                 {players[myId] ? Math.floor(players[myId].x / 10) : 0} m
               </div>
             </div>
-            
+
             {/* Game Controls Panel */}
             <div className="bg-black bg-opacity-70 backdrop-filter backdrop-blur-sm rounded-lg p-3 border border-indigo-500 flex flex-col space-y-2">
               {/* Show message for request accepter */}
@@ -1266,15 +1266,14 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
                   Controls disabled for request accepter
                 </div>
               )}
-              
+
               {/* Exit Game Button */}
-              <button 
+              <button
                 onClick={handleExitGame}
-                className={`bg-gradient-to-r from-gray-600 to-gray-800 text-white px-4 py-2 rounded-lg shadow-lg ${
-                  isRequestAccepter 
-                    ? 'opacity-50 cursor-not-allowed' 
-                    : 'hover:from-gray-700 hover:to-gray-900 transform hover:scale-105 transition duration-300'
-                } flex items-center justify-center`}
+                className={`bg-gradient-to-r from-gray-600 to-gray-800 text-white px-4 py-2 rounded-lg shadow-lg ${isRequestAccepter
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:from-gray-700 hover:to-gray-900 transform hover:scale-105 transition duration-300'
+                  } flex items-center justify-center`}
                 disabled={isRequestAccepter}
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -1282,22 +1281,21 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
                 </svg>
                 Exit
               </button>
-              
+
               {/* Restart Race Button */}
-              <button 
+              {/* <button
                 onClick={restartRace}
-                className={`bg-gradient-to-r from-red-500 to-orange-500 text-white px-4 py-2 rounded-lg shadow-lg ${
-                  isRequestAccepter 
-                    ? 'opacity-50 cursor-not-allowed' 
-                    : 'hover:from-red-600 hover:to-orange-600 transform hover:scale-105 transition duration-300'
-                } flex items-center justify-center`}
+                className={`bg-gradient-to-r from-red-500 to-orange-500 text-white px-4 py-2 rounded-lg shadow-lg ${isRequestAccepter
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:from-red-600 hover:to-orange-600 transform hover:scale-105 transition duration-300'
+                  } flex items-center justify-center`}
                 disabled={isRequestAccepter}
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 {isHost ? "Restart All" : "Restart Game"}
-              </button>
+              </button> */}
             </div>
           </div>
 
@@ -1311,7 +1309,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               <span className="font-bold text-indigo-300">PLAYER:</span>
               <span className="text-white">{players[myId]?.name || 'Player'}</span>
             </div>
-            
+
             {/* Players count */}
             <div className="flex items-center space-x-2 mb-3">
               <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -1320,7 +1318,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               <span className="font-bold text-indigo-300">PLAYERS:</span>
               <span className="text-white">{Object.keys(players).length}</span>
             </div>
-            
+
             {/* Game controls legend */}
             <div className="pt-2 border-t border-indigo-600">
               <div className="flex items-center space-x-2 mb-2">
@@ -1397,8 +1395,8 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           {/* Overlay the stickman gifs on top of the canvas */}
           {Object.entries(players).map(([id, player]) => {
             // No longer checking visibility since all players in the state should be visible
-            console.log(`Rendering player ${id}, name: ${player.name}, isMyId: ${id === myId}`);
-            
+            // console.log(`Rendering player ${id}, name: ${player.name}, isMyId: ${id === myId}`);
+
             const me = players[myId];
             const cameraOffset = me ? me.x - fixedPlayerX : 0;
             const drawX = id === myId ? fixedPlayerX : player.x - cameraOffset;
@@ -1424,10 +1422,10 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
                 transition: 'transform 0.1s ease-out',
                 transform: id === myId && collisionBounce ? 'translateX(-10px)' : 'translateX(0)'
               };
-              
+
               return baseStyle;
             };
-            
+
             return (
               <div
                 key={id}
@@ -1438,7 +1436,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
                 <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap px-2 py-1 bg-black bg-opacity-70 rounded-md text-xs text-white border border-indigo-400 pulse-border">
                   {id === myId ? `${player.name || formatDisplayId(id)} (YOU)` : (player.name || formatDisplayId(id))}
                 </div>
-                
+
                 {/* Only render one image at a time */}
                 <img
                   key={`stickman-${id}-${playerMoving}`} // Force re-render when animation state changes
@@ -1458,11 +1456,11 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
 
           {/* DEBUG: Always visible own player if not in players list */}
           {myId && !players[myId] && (
-            <div 
+            <div
               className="absolute bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg"
               onClick={() => {
-                console.log("Missing player! Current state:", { 
-                  myId, 
+                console.log("Missing player! Current state:", {
+                  myId,
                   players: Object.keys(players),
                   visiblePlayers: Array.from(visiblePlayers)
                 });
@@ -1473,6 +1471,31 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           )}
         </div>
       </div>
+      {/* 👇 Mobile Controls – Bigger with morphism+glass effect */}
+      <div className="fixed bottom-0 left-0 w-full h-full z-50 md:hidden pointer-events-none">
+        {/* Jump area - Left */}
+        <div
+          className="absolute bottom-50 left-0 w-1/2 h-2/3 p-4 flex items-end justify-center pointer-events-auto"
+          onTouchStart={() => { pressedKeys.current['ArrowUp'] = true; }}
+          onTouchEnd={() => { pressedKeys.current['ArrowUp'] = false; }}
+        >
+          <div className="bg-white/20 backdrop-blur-lg rounded-3xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide transition transform active:scale-90">
+            ⬆️ JUMP
+          </div>
+        </div>
+
+        {/* Run area - Right */}
+        <div
+          className="absolute bottom-50 right-0 w-1/2 h-2/3 p-4 flex items-end justify-center pointer-events-auto"
+          onTouchStart={() => { pressedKeys.current['ArrowRight'] = true; }}
+          onTouchEnd={() => { pressedKeys.current['ArrowRight'] = false; }}
+        >
+          <div className="bg-white/20 backdrop-blur-lg rounded-3xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide transition transform active:scale-90">
+            ▶️ RUN
+          </div>
+        </div>
+      </div>
+
       {myId && <AddPlayerById myId={myId} />}
       {myId && <GameSettings myId={myId} />}
     </div>
