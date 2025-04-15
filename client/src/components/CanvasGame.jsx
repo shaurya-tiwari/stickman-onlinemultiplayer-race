@@ -701,7 +701,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       ctx.clearRect(0, 0, 800, 600);
       const me = players[myId];
       const cameraOffset = me ? me.x - fixedPlayerX : 0;
-      const roadY = -100;
+      const roadY = -0;
 
       // Visible area boundaries with buffer
       const visibleLeft = cameraOffset - 50;
