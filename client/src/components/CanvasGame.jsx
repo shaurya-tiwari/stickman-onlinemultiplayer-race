@@ -713,7 +713,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       roadGradient.addColorStop(0.5, '#555555');
       roadGradient.addColorStop(1, '#333333');
       ctx.fillStyle = roadGradient;
-      ctx.fillRect(0, roadY, 700, 15);
+      ctx.fillRect(0, roadY, ctx.canvas.width, 15);
 
       // // Draw grass below the road
       // ctx.fillStyle = '#fff';
@@ -1388,15 +1388,15 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           )}
         </div>
       </div>
-      {/* 👇 Unified Mobile Controls – Horizontal layout */}
-      <div className="fixed bottom-20 left-0 right-0 z-50 flex justify-around px-4 pointer-events-none">
+      {/* 👇 Mobile Controls – Bottom Center Horizontal Layout */}
+      <div className="fixed bottom-30 left-0 right-0 z-50 flex justify-around px-4 pointer-events-none">
         {/* Jump Button */}
         <div
           className="pointer-events-auto"
           onTouchStart={() => { pressedKeys.current['ArrowUp'] = true; }}
           onTouchEnd={() => { pressedKeys.current['ArrowUp'] = false; }}
         >
-          <div className="bg-white/20 backdrop-blur-lg rounded-3xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide active:scale-90 transition">
+          <div className="bg-white/20 backdrop-blur-lg rounded-3xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide active:scale-90 transition select-none">
             ⬆️
           </div>
         </div>
@@ -1407,7 +1407,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           onTouchStart={() => { pressedKeys.current['ArrowRight'] = true; }}
           onTouchEnd={() => { pressedKeys.current['ArrowRight'] = false; }}
         >
-          <div className="bg-white/20 backdrop-blur-lg rounded-3xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide active:scale-90 transition">
+          <div className="bg-white/20 backdrop-blur-lg rounded-3xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide active:scale-90 transition select-none">
             ▶️
           </div>
         </div>
