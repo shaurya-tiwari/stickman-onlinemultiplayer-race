@@ -1389,7 +1389,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         </div>
       </div>
       {/* 👇 Unified Mobile Controls – Horizontal layout */}
-      <div className="fixed bottom-4 left-0 right-0 z-50 flex justify-around px-4 pointer-events-none">
+      <div className="fixed bottom-20 left-0 right-0 z-50 flex justify-around px-4 pointer-events-none">
         {/* Jump Button */}
         <div
           className="pointer-events-auto"
