@@ -701,7 +701,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       ctx.clearRect(0, 0, 800, 600);
       const me = players[myId];
       const cameraOffset = me ? me.x - fixedPlayerX : 0;
-      const roadY = 0;
+      const roadY = 400;
 
       // Visible area boundaries with buffer
       const visibleLeft = cameraOffset - 50;
@@ -716,7 +716,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       ctx.fillRect(0, roadY, 700, 15);
 
       // Draw grass below the road
-      ctx.fillStyle = '#ff2f';
+      ctx.fillStyle = '#fff';
       ctx.fillRect(0, roadY + 15, 800, 600 - roadY - 15);
 
       // Draw trees with improved sizing and shadows - only draw visible trees
@@ -737,7 +737,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
 
         // Tree image - use cached image if available or fall back to the one in the tree object
         const treeImg = image.src ? image : treeImagesCache[image] || image;
-        ctx.drawImage(treeImg, drawX + 40, roadY - 380, 200, 280);
+        ctx.drawImage(treeImg, drawX + 40, roadY - 280, 200, 280);
       });
 
       // Draw obstacles with improved sizing, shadows and effects - only draw visible obstacles
