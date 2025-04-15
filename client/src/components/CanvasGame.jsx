@@ -171,12 +171,6 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       return;
     }
 
-    // Set flag to prevent immediate movement after restart
-    justRestarted.current = true;
-    setTimeout(() => {
-      justRestarted.current = false;
-    }, 200);
-
     // Only the host can restart the global race
     if (myId && isHost) {
       // Clear any finish states
@@ -190,29 +184,8 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       velocityY.current = 0;
       lastPosRef.current = 0;
 
-      // Emit restart race event to reset all players
-      socket.emit('restart-race');
 
-      // Set our own position to ensure synchronization
-      setPlayers(prev => {
-        const updated = { ...prev };
-        if (updated[myId]) {
-          updated[myId] = {
-            ...updated[myId],
-            x: 0,
-            y: 0,
-            isJumping: false
-          };
-        }
-        return updated;
-      });
 
-      // Explicitly send position update to server - use exact 0 positions
-      const resetPosition = {
-        x: 0,
-        y: 0,
-        isJumping: false
-      };
 
       // Force immediate update locally first
       setPlayers(prev => {
@@ -728,49 +701,13 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       ctx.clearRect(0, 0, 800, 600);
       const me = players[myId];
       const cameraOffset = me ? me.x - fixedPlayerX : 0;
-      const roadY = 400;
+      const roadY = 220;
 
       // Visible area boundaries with buffer
       const visibleLeft = cameraOffset - 50;
       const visibleRight = cameraOffset + 850;
 
-      // Draw a gradient sky background
-      const skyGradient = ctx.createLinearGradient(0, 0, 0, roadY);
-      skyGradient.addColorStop(0, '#87CEEB'); // Sky blue at top
-      skyGradient.addColorStop(0.7, '#B0E2FF'); // Lighter blue toward horizon
-      skyGradient.addColorStop(1, '#E6F0FF'); // Almost white at horizon
-      ctx.fillStyle = skyGradient;
-      ctx.fillRect(0, 0, 800, roadY);
-
-      // Draw some distant clouds for depth with optimized rendering
-      const drawCloud = (x, y, size) => {
-        // Only draw clouds if they're in the visible area plus buffer
-        const drawX = x - cameraOffset * 0.2; // Parallax effect
-        if (drawX < -200 || drawX > 1000) return; // Skip if not visible
-
-        ctx.save();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.beginPath();
-        ctx.arc(drawX, y, size, 0, Math.PI * 2);
-        ctx.arc(drawX + size * 0.5, y - size * 0.2, size * 0.7, 0, Math.PI * 2);
-        ctx.arc(drawX + size, y, size * 0.8, 0, Math.PI * 2);
-        ctx.arc(drawX + size * 1.5, y, size * 0.7, 0, Math.PI * 2);
-        ctx.arc(drawX + size * 0.8, y + size * 0.3, size * 0.7, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      };
-
-      // Draw a few clouds with parallax effect (move slower than foreground)
-      const parallaxFactor = 0.2;
-      drawCloud(100, 100, 30);
-      drawCloud(350, 150, 25);
-      drawCloud(600, 80, 35);
-      drawCloud(750, 180, 20);
-
-      // Draw game boundaries - visible border to show play area
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(0, 0, 800, 600);
+      4
 
       // Draw a nicer ground/road with gradient
       const roadGradient = ctx.createLinearGradient(0, roadY - 15, 0, roadY + 15);
@@ -778,16 +715,16 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       roadGradient.addColorStop(0.5, '#555555');
       roadGradient.addColorStop(1, '#333333');
       ctx.fillStyle = roadGradient;
-      ctx.fillRect(0, roadY, 800, 15);
+      ctx.fillRect(0, roadY, 700, 15);
 
       // Draw grass below the road
-      ctx.fillStyle = '#4d8c57';
-      ctx.fillRect(0, roadY + 15, 800, 600 - roadY - 15);
+      // ctx.fillStyle = '#ffff';
+      // ctx.fillRect(0, roadY + 15, 800, 600 - roadY - 15);
 
       // Draw trees with improved sizing and shadows - only draw visible trees
       trees.forEach(({ x, image }) => {
         // Skip trees outside the visible area for performance
-        if (x < visibleLeft - 200 || x > visibleRight + 200) return;
+        if (x < visibleLeft - 200 || x > visibleRight + 500) return;
 
         const drawX = x - cameraOffset;
 
@@ -796,19 +733,19 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         ctx.globalAlpha = 0.4;
         ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
         ctx.beginPath();
-        ctx.ellipse(drawX + 120, roadY + 10, 60, 15, 0, 0, Math.PI * 2);
+        ctx.ellipse(drawX + 220, roadY + 10, 60, 15, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
 
         // Tree image - use cached image if available or fall back to the one in the tree object
         const treeImg = image.src ? image : treeImagesCache[image] || image;
-        ctx.drawImage(treeImg, drawX + 40, roadY - 280, 200, 280);
+        ctx.drawImage(treeImg, drawX + 40, roadY - 380, 200, 280);
       });
 
       // Draw obstacles with improved sizing, shadows and effects - only draw visible obstacles
       obstacles.forEach(({ x, image }) => {
         // Skip obstacles outside the visible area for performance
-        if (x < visibleLeft - 60 || x > visibleRight + 60) return;
+        if (x < visibleLeft - 60 || x > visibleRight + 20) return;
 
         const drawX = x - cameraOffset;
 
@@ -846,25 +783,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         ctx.fillText('FINISH', finishLineX + 10, roadY - 120);
 
         // Draw checkered pattern on the road
-        const squareSize = 15;
-        const checkerWidth = 60;
-        for (let i = 0; i < checkerWidth / squareSize; i++) {
-          for (let j = 0; j < 6; j++) {
-            if ((i + j) % 2 === 0) {
-              ctx.fillStyle = '#FFFFFF';
-            } else {
-              ctx.fillStyle = '#000000';
-            }
-            ctx.fillRect(
-              finishLineX + (i * squareSize) - checkerWidth / 2,
-              roadY - 3 + (j * squareSize),
-              squareSize,
-              squareSize
-            );
-          }
-        }
 
-        ctx.restore();
       }
 
       // Improve obstacle collision detection
@@ -887,7 +806,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           const playerRight = playerX + playerWidth;
 
           // Check for collision with obstacle - more precise hitbox
-          if (playerRight > obsStart + 10 && playerLeft < obsEnd - 10) {
+          if (playerRight > obsStart + 10 && playerLeft < obsEnd - 30) {
             // Apply a small bounce back for more realistic physics
             const newX = obsStart - playerWidth - 2;
             setPlayers(prev => ({ ...prev, [myId]: { ...me, x: newX } }));
@@ -1472,17 +1391,20 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         </div>
       </div>
       {/* 👇 Mobile Controls – Bigger with morphism+glass effect */}
+      <div className='w-full h-full'>
+
       <div className="fixed bottom-0 left-0 w-150 z-50 pointer-events-none">
         {/* Jump area - Left */}
         <div
           className="absolute bottom-50 left-0 w-1/2 h-2/3 p-4 flex items-end justify-center pointer-events-auto"
           onTouchStart={() => { pressedKeys.current['ArrowUp'] = true; }}
           onTouchEnd={() => { pressedKeys.current['ArrowUp'] = false; }}
-        >
+          >
           <div className="bg-white/20 backdrop-blur-lg rounded-4xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide transition transform active:scale-90">
-            ⬆️ JUMP
+            ⬆️
           </div>
         </div>
+          </div>
 
         {/* Run area - Right */}
         <div
@@ -1491,7 +1413,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           onTouchEnd={() => { pressedKeys.current['ArrowRight'] = false; }}
         >
           <div className="bg-white/20 backdrop-blur-lg rounded-3xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide transition transform active:scale-90">
-            ▶️ RUN
+            ▶️
           </div>
         </div>
       </div>
