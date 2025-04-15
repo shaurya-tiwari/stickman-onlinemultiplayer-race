@@ -1,4 +1,3 @@
-"use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import PlayerIdDisplay from "./PlayerIdDisplay"
@@ -649,7 +648,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               reject(new Error(`Failed to load tree image: ${key}`))
             }
             img.src = src
-          }).catch(() => {}) // Catch errors but continue loading other images
+          }).catch(() => { }) // Catch errors but continue loading other images
 
           if (isComponentMounted) {
             treeImagesCache[key] = img
@@ -675,7 +674,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               reject(new Error(`Failed to load obstacle image: ${key}`))
             }
             img.src = src
-          }).catch(() => {}) // Catch errors but continue loading other images
+          }).catch(() => { }) // Catch errors but continue loading other images
 
           if (isComponentMounted) {
             obstacleImagesCache[key] = img
@@ -1180,11 +1179,10 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               {/* Exit Game Button */}
               <button
                 onClick={handleExitGame}
-                className={`bg-gradient-to-r from-gray-600 to-gray-800 text-white px-4 py-2 rounded-lg shadow-lg ${
-                  isRequestAccepter
+                className={`bg-gradient-to-r from-gray-600 to-gray-800 text-white px-4 py-2 rounded-lg shadow-lg ${isRequestAccepter
                     ? "opacity-50 cursor-not-allowed"
                     : "hover:from-gray-700 hover:to-gray-900 transform hover:scale-105 transition duration-300"
-                } flex items-center justify-center`}
+                  } flex items-center justify-center`}
                 disabled={isRequestAccepter}
               >
                 <svg
@@ -1465,7 +1463,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         </div>
       </div>
       {/* 👇 Mobile Controls – Bottom Center Horizontal Layout */}
-      <div className="fixed bottom-30 left-0 right-0 z-50 flex justify-around px-4 pointer-events-none">
+      <div className="fixed bottom-4 left-0 right-0 z-50 flex justify-around px-4 pointer-events-none md:bottom-8">
         {/* Jump Button */}
         <div
           className="pointer-events-auto"
@@ -1504,3 +1502,29 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
 }
 
 export default CanvasGame
+
+// Add a new useEffect to handle responsive positioning
+useEffect(() => {
+  const handleResize = () => {
+    // Force redraw of canvas and player positions when window size changes
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d")
+      if (ctx) {
+        ctx.clearRect(0, 0, 800, 600)
+        // Trigger a redraw by updating a state
+        setPlayers((prev) => ({ ...prev }))
+      }
+    }
+  }
+
+  // Add resize event listener
+  window.addEventListener("resize", handleResize)
+
+  // Initial call to ensure correct positioning
+  handleResize()
+
+  // Clean up
+  return () => {
+    window.removeEventListener("resize", handleResize)
+  }
+}, [])
