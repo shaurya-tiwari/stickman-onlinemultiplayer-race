@@ -715,9 +715,9 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       ctx.fillStyle = roadGradient;
       ctx.fillRect(0, roadY, 700, 15);
 
-      // Draw grass below the road
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, roadY + 15, 800, 600 - roadY - 15);
+      // // Draw grass below the road
+      // ctx.fillStyle = '#fff';
+      // ctx.fillRect(0, roadY + 15, 800, 600 - roadY - 15);
 
       // Draw trees with improved sizing and shadows - only draw visible trees
       trees.forEach(({ x, image }) => {
