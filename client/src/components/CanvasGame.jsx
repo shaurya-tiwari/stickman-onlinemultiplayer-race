@@ -807,7 +807,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           if (playerRight > obsStart + 10 && playerLeft < obsEnd - 30) {
             // Apply a small bounce back for more realistic physics
             const bounceBackDistance = 7; // or 70 for more push
-            // const newX = obsStart - playerWidth - bounceBackDistance;
+            const newX = obsStart - playerWidth - bounceBackDistance;
             setPlayers(prev => ({ ...prev, [myId]: { ...me, x: newX } }));
             socket.emit('update-position', { ...me, x: newX });
             break; // Stop checking after first collision
