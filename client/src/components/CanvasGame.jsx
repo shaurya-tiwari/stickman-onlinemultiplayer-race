@@ -1397,9 +1397,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           onTouchStart={() => { pressedKeys.current['ArrowUp'] = true; }}
           onTouchEnd={() => { pressedKeys.current['ArrowUp'] = false; }}
         >
-          <div className="bg-white/20 backdrop-blur-lg rounded-4xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide transition transform active:scale-90">
-            ⬆️
-          </div>
+          ...
         </div>
       </div>
 
@@ -1409,9 +1407,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         onTouchStart={() => { pressedKeys.current['ArrowRight'] = true; }}
         onTouchEnd={() => { pressedKeys.current['ArrowRight'] = false; }}
       >
-        <div className="bg-white/20 backdrop-blur-lg rounded-3xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide transition transform active:scale-90">
-          ▶️
-        </div>
+        ...
       </div>
 
 
