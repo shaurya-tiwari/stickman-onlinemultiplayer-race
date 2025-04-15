@@ -4,12 +4,13 @@ import { io } from 'socket.io-client';
 // Create socket with improved reconnection logic and fallback options
 let socketUrl = 'https://stickman-onlinemultiplayer-race.onrender.com';
 // Try to determine if we're in production by checking the window location
-if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+if (window.location.hostname === 'localhost' && window.location.hostname === '127.0.0.1') {
   // Use relative URL in production to match current domain
-  socketUrl = '/';
+  socketUrl = 'http://localhost:3001';
 }
 
 const socket = io(socketUrl, {
+  transports: ['websocket'],
   autoConnect: true,
   reconnection: true,
   reconnectionAttempts: 10, // Increased from 5
@@ -53,7 +54,7 @@ socket.on('init', ({ id }) => {
     myPlayerId = id;
     visiblePlayers.add(id); // Always see ourselves
     console.log('Initialized visible players with self:', Array.from(visiblePlayers));
-    
+
     // Store player ID in localStorage for potential reconnection
     localStorage.setItem('playerId', id);
   }
@@ -64,15 +65,15 @@ socket.on('connect', () => {
   console.log('Connected to server!');
   clearTimeout(reconnectionTimer);
   reconnecting = false;
-  
+
   // Check if we were previously connected
   const storedPlayerId = localStorage.getItem('playerId');
   if (storedPlayerId && !myPlayerId) {
     console.log(`Attempting to reconnect with stored player ID: ${storedPlayerId}`);
-    
+
     // Restore the player ID 
     myPlayerId = storedPlayerId;
-    
+
     // Request race state update from server with retry mechanism
     const attemptReconnection = (retryCount = 0) => {
       if (retryCount > 3) {
@@ -81,15 +82,15 @@ socket.on('connect', () => {
         myPlayerId = null;
         return;
       }
-      
+
       socket.emit('reconnect-to-race', (response) => {
         console.log('Reconnection response:', response);
-        
+
         if (response && response.success) {
           // Update visible players based on server response
           visiblePlayers.clear();
           visiblePlayers.add(myPlayerId); // Always see ourselves
-          
+
           // Add all visible players from response
           if (response.visiblePlayers && Array.isArray(response.visiblePlayers)) {
             response.visiblePlayers.forEach(player => {
@@ -98,11 +99,11 @@ socket.on('connect', () => {
               }
             });
           }
-          
+
           // Broadcast reconnection event for anyone listening
           const reconnectEvent = new CustomEvent('player-reconnected', {
             detail: {
-              playerId: myPlayerId, 
+              playerId: myPlayerId,
               raceStatus: response.raceStatus || { isActive: false, distance: 1000 },
               visiblePlayers: response.visiblePlayers || []
             }
@@ -115,7 +116,7 @@ socket.on('connect', () => {
         }
       });
     };
-    
+
     attemptReconnection();
   }
 });
@@ -124,12 +125,12 @@ socket.on('connect', () => {
 socket.on('disconnect', () => {
   console.log('Disconnected from server, will attempt to reconnect');
   reconnecting = true;
-  
+
   // Store last position for reconnection
   if (myPlayerId) {
     localStorage.setItem('lastPosition', JSON.stringify(lastKnownPosition));
   }
-  
+
   // Set a timeout to clear stored data if reconnection fails for too long
   reconnectionTimer = setTimeout(() => {
     if (reconnecting) {
@@ -145,7 +146,7 @@ socket.on('disconnect', () => {
 // Add error handling for connection errors
 socket.on('connect_error', (err) => {
   console.error('Connection error:', err.message);
-  
+
   // If we keep getting connection errors, eventually reset
   if (socket.io.reconnectionAttempts >= 5) {
     console.log('Multiple connection errors, resetting connection state');
@@ -156,12 +157,12 @@ socket.on('connect_error', (err) => {
 socket.on('player-joined', ({ id }) => {
   console.log(`Player joined and is now visible: ${id}`);
   visiblePlayers.add(id);
-  
+
   // Always make sure we're in our own visibility list
   if (myPlayerId) {
     visiblePlayers.add(myPlayerId);
   }
-  
+
   console.log('Current visible players:', Array.from(visiblePlayers));
 });
 
@@ -169,7 +170,7 @@ socket.on('player-joined', ({ id }) => {
 socket.on('player-reconnected', ({ id, name, x, y }) => {
   console.log(`Player reconnected: ${name} (${id})`);
   visiblePlayers.add(id);
-  
+
   // Broadcast reconnection event for game component to update player position
   const playerReconnectedEvent = new CustomEvent('other-player-reconnected', {
     detail: { id, name, x, y }
@@ -183,7 +184,7 @@ const updatePosition = (position) => {
     console.warn('Attempted to update position while disconnected');
     return;
   }
-  
+
   if (position) {
     lastKnownPosition = { ...position };
   }
@@ -220,13 +221,13 @@ const safeEmit = (event, data, callback) => {
       console.error('safeEmit called without event name');
       return;
     }
-    
+
     // Check if socket is connected
     if (!socket.connected) {
       console.warn(`Attempted to emit ${event} while socket is disconnected`);
       return;
     }
-    
+
     // Deep copy the data to avoid modifying original
     let processedData = {};
     try {
@@ -235,22 +236,22 @@ const safeEmit = (event, data, callback) => {
       console.error(`Error serializing data for ${event}:`, parseError);
       processedData = { ...data }; // Fallback to shallow copy
     }
-    
+
     // Process playerId properties
     if (processedData.playerId) {
       processedData.playerId = cleanId(processedData.playerId);
     }
-    
+
     // Process targetId properties
     if (processedData.targetId) {
       processedData.targetId = cleanId(processedData.targetId);
     }
-    
+
     // If this is a position update, track it locally too
     if (event === 'update-position') {
       updatePosition(processedData);
     }
-    
+
     // Create a safer callback wrapper
     const safeCallback = callback ? (...args) => {
       try {
@@ -259,7 +260,7 @@ const safeEmit = (event, data, callback) => {
         console.error(`Error in socket.io callback for ${event}:`, callbackError);
       }
     } : undefined;
-    
+
     // Finally emit the event
     socket.emit(event, processedData, safeCallback);
   } catch (error) {
@@ -284,13 +285,13 @@ window.addEventListener('beforeunload', () => {
 
 // Export both the socket and helper functions
 export default socket;
-export { 
-  isPlayerVisible, 
-  visiblePlayers, 
-  formatDisplayId, 
-  cleanId, 
-  safeEmit, 
-  logVisiblePlayers, 
+export {
+  isPlayerVisible,
+  visiblePlayers,
+  formatDisplayId,
+  cleanId,
+  safeEmit,
+  logVisiblePlayers,
   myPlayerId,
   updatePosition,
   lastKnownPosition,
