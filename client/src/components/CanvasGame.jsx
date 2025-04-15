@@ -1472,14 +1472,14 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         </div>
       </div>
       {/* 👇 Mobile Controls – Bigger with morphism+glass effect */}
-      <div className="fixed bottom-0 left-0 w-150 z-50 md:hidden pointer-events-none">
+      <div className="fixed bottom-0 left-0 w-150 z-50 pointer-events-none">
         {/* Jump area - Left */}
         <div
           className="absolute bottom-50 left-0 w-1/2 h-2/3 p-4 flex items-end justify-center pointer-events-auto"
           onTouchStart={() => { pressedKeys.current['ArrowUp'] = true; }}
           onTouchEnd={() => { pressedKeys.current['ArrowUp'] = false; }}
         >
-          <div className="bg-white/20 backdrop-blur-lg rounded-3xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide transition transform active:scale-90">
+          <div className="bg-white/20 backdrop-blur-lg rounded-4xl shadow-[inset_5px_5px_15px_rgba(255,255,255,0.1),_inset_-5px_-5px_15px_rgba(0,0,0,0.2)] border border-white/30 px-10 py-6 text-2xl font-bold text-white tracking-wide transition transform active:scale-90">
             ⬆️ JUMP
           </div>
         </div>
