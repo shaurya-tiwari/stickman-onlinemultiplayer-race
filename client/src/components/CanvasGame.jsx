@@ -1391,8 +1391,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
         </div>
       </div>
       {/* 👇 Mobile Controls – Bigger with morphism+glass effect */}
-      <div className='w-full h-full'>
-
+   
       <div className="fixed bottom-0 left-0 w-150 z-50 pointer-events-none">
         {/* Jump area - Left */}
         <div
@@ -1416,7 +1415,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
             ▶️
           </div>
         </div>
-      </div>
+    
 
       {myId && <AddPlayerById myId={myId} />}
       {myId && <GameSettings myId={myId} />}
