@@ -1156,7 +1156,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               ref={canvasRef}
               width={800}
               height={600}
-              className="rounded-lg bg-white"
+              className="rounded-lg bg-white w-full max-w-[800px] h-auto"
               style={{
                 boxShadow: 'inset 0 0 20px 10px rgba(0, 0, 0, 0.3)',
                 borderRadius: '8px',
