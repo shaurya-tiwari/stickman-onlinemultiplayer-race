@@ -1344,6 +1344,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
               return baseStyle;
             };
 
+            
             return (
               <div
                 key={id}
