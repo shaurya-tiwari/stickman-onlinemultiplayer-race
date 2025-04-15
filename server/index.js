@@ -7,7 +7,11 @@ const obstacleModule = require('./obstacles');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: 'https://stickman-onlinemultiplayer-race.vercel.app' },
+  cors: {
+    origin: 'https://stickman-onlinemultiplayer-race.vercel.app',
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
   // Use custom ID generation for 10-digit numbers
   connectionStateRecovery: {
     maxDisconnectionDuration: 2 * 60 * 1000,
@@ -37,8 +41,8 @@ let raceFinished = false;
 let raceWinner = null;
 
 let treeImages = [
-  'tree.png', 'tree2.png', 'tree3.png', 'tree4.png', 'tree5.png', 
-  'tree6.png', 'tree7.png', 'tree9.png', 'tree10.png', 'tree11.png', 
+  'tree.png', 'tree2.png', 'tree3.png', 'tree4.png', 'tree5.png',
+  'tree6.png', 'tree7.png', 'tree9.png', 'tree10.png', 'tree11.png',
   'tree12.png', 'tree13.png', 'tree14.png', 'tree15.png', 'tree16.png', 'tree17.png'
 ];
 let trees = [];
@@ -76,17 +80,17 @@ io.on('connection', socket => {
   do {
     customId = generateTenDigitId();
   } while (existingIds.has(customId));
-  
+
   existingIds.add(customId);
-  
+
   // Store the custom ID in the socket object
   socket.customId = customId;
-  
+
   console.log(`Player connected: ${socket.customId} (socket.id: ${socket.id})`);
-  
+
   // Create a reverse mapping from socket.id to customId for easier lookups
   socket.join(customId); // Join a room with the customId name for direct messaging
-  
+
   // Initialize visibility for this player (only see yourself)
   playerVisibility[socket.customId] = new Set([socket.customId]);
 
@@ -116,32 +120,32 @@ io.on('connection', socket => {
       if (hostId) {
         // Initialize player
         players[socket.customId] = { x: 0, y: 0, name };
-        
+
         // Create visible players object (only self and host)
         const visiblePlayers = {};
         visiblePlayers[socket.customId] = players[socket.customId];
-        
+
         // If host exists, add them to visible players and make this player visible to host
         if (players[hostId]) {
           visiblePlayers[hostId] = players[hostId];
-          
+
           // Add host to this player's visibility
           if (!playerVisibility[socket.customId]) {
             playerVisibility[socket.customId] = new Set([socket.customId]);
           }
           playerVisibility[socket.customId].add(hostId);
-          
+
           // Add this player to host's visibility
           if (!playerVisibility[hostId]) {
             playerVisibility[hostId] = new Set([hostId]);
           }
           playerVisibility[hostId].add(socket.customId);
-          
+
           // Notify host about this player
           io.to(hostId).emit('new-player', { id: socket.customId, name });
           io.to(hostId).emit('player-joined', { id: socket.customId });
         }
-        
+
         // Send initialization with only visible players
         socket.emit('init', {
           id: socket.customId,
@@ -149,7 +153,7 @@ io.on('connection', socket => {
           trees,
           obstacles
         });
-        
+
         callback({ success: true });
       } else {
         callback({ success: false, message: 'Invalid code' });
@@ -166,21 +170,21 @@ io.on('connection', socket => {
       // Validate name - ensure it's a string and not empty
       const validName = name && typeof name === 'string' ? name.trim() : 'Player';
       const displayName = validName || `Player-${socket.customId.substring(0, 5)}`;
-      
+
       console.log(`Player ${socket.customId} setting name to ${displayName}`);
-      
+
       // Initialize the player
       players[socket.customId] = { x: 0, y: 0, name: displayName, isJumping: false };
-      
+
       // Create visible players object (only self)
       const visiblePlayers = {};
       visiblePlayers[socket.customId] = players[socket.customId];
-      
+
       // Make sure player visibility is initialized
       if (!playerVisibility[socket.customId]) {
         playerVisibility[socket.customId] = new Set([socket.customId]);
       }
-      
+
       // Send only this player's info in the init event
       socket.emit('init', {
         id: socket.customId,
@@ -192,7 +196,7 @@ io.on('connection', socket => {
       console.error(`Error in set-name for ${socket.customId}:`, error);
       // Still try to initialize the player with a default name
       players[socket.customId] = { x: 0, y: 0, name: `Player-${socket.customId.substring(0, 5)}`, isJumping: false };
-      
+
       // Send basic init to avoid client being stuck
       socket.emit('init', {
         id: socket.customId,
@@ -215,11 +219,11 @@ io.on('connection', socket => {
       // Initialize the player if they don't exist yet but have a customId
       if (!players[socket.customId]) {
         console.log(`Creating missing player for ${socket.customId} during position update`);
-        players[socket.customId] = { 
-          x: 0, 
-          y: 0, 
+        players[socket.customId] = {
+          x: 0,
+          y: 0,
           name: `Player-${socket.customId.substring(0, 5)}`,
-          isJumping: false 
+          isJumping: false
         };
 
         // Make sure visibility is initialized
@@ -233,53 +237,53 @@ io.on('connection', socket => {
         console.warn(`Invalid position data from ${socket.customId}`);
         return;
       }
-      
+
       // Store previous position for validation
       const prevX = players[socket.customId].x || 0;
-      
+
       // Throttle updates from the same player (avoid flooding)
       const now = Date.now();
       const lastUpdate = players[socket.customId].lastUpdateTime || 0;
       const minUpdateInterval = 20; // Minimum 20ms between updates from the same player
-      
+
       if (now - lastUpdate < minUpdateInterval) {
         // Silently ignore too frequent updates
         return;
       }
-      
+
       // Validate movement - Ensure players can't jump too far
       // Maximum allowed movement speed (pixels per update)
       const maxMoveSpeed = 20;
-      
+
       // Calculate the requested movement
       const requestedMove = data.x - prevX;
-      
+
       // Validate the movement speed
       let validatedX = data.x;
       if (Math.abs(requestedMove) > maxMoveSpeed) {
         // Limit the movement to the maximum allowed speed
         validatedX = prevX + (Math.sign(requestedMove) * maxMoveSpeed);
         console.log(`Player ${socket.customId} movement throttled from ${data.x} to ${validatedX}`);
-        
+
         // Send position correction to the client
         socket.emit('position-correction', {
           x: validatedX,
           y: data.y
         });
       }
-      
+
       // Ensure X and Y are numbers
       if (isNaN(validatedX) || isNaN(data.y)) {
         console.warn(`Player ${socket.customId} sent non-numeric position: ${validatedX}, ${data.y}`);
         return;
       }
-      
+
       // Apply validated position
       players[socket.customId].x = validatedX;
       players[socket.customId].y = data.y;
       players[socket.customId].isJumping = !!data.isJumping;
       players[socket.customId].lastUpdateTime = now;
-      
+
       // Check for collisions with obstacles
       let hasCollision = false;
       for (const obstacle of obstacles) {
@@ -288,31 +292,31 @@ io.on('connection', socket => {
           const collisionBox = obstacleModule.getCollisionBox(obstacle);
           validatedX = collisionBox.x - 32; // Move player just before obstacle
           players[socket.customId].x = validatedX;
-          
+
           // Send position correction to the client
           socket.emit('position-correction', {
             x: validatedX,
             y: players[socket.customId].y
           });
-          
+
           hasCollision = true;
           break;
         }
       }
-      
+
       // Check if player has finished the race
       if (!hasCollision && raceStatus.isActive && !raceFinished && validatedX >= raceDistance) {
         handlePlayerFinish(socket.customId, players[socket.customId].name);
       }
-      
+
       // Only emit to players who can see this player
       if (playerVisibility[socket.customId]) {
         playerVisibility[socket.customId].forEach(visibleToId => {
           if (visibleToId !== socket.customId) { // Don't send to self
             try {
-              io.to(visibleToId).emit('player-moved', { 
-                id: socket.customId, 
-                x: players[socket.customId].x, 
+              io.to(visibleToId).emit('player-moved', {
+                id: socket.customId,
+                x: players[socket.customId].x,
                 y: players[socket.customId].y,
                 name: players[socket.customId].name
               });
@@ -334,13 +338,13 @@ io.on('connection', socket => {
       console.log(`Player ${playerId} not found in players list, ignoring finish attempt`);
       return;
     }
-    
+
     // Verify the player's position
     if (players[playerId].x < raceDistance) {
       console.log(`Player ${playerId} position (${players[playerId].x}) doesn't match race distance (${raceDistance}), ignoring finish attempt`);
       return;
     }
-    
+
     // Only register the first player to finish
     if (!raceFinished) {
       raceFinished = true;
@@ -349,18 +353,18 @@ io.on('connection', socket => {
         id: playerId,
         name: playerName || players[playerId]?.name || 'Unknown Player'
       };
-      
+
       console.log(`Player ${playerId} (${raceWinner.name}) won the race!`);
-      
+
       // Record the finish in race state for this player
       if (!playerRaceState[playerId]) {
         playerRaceState[playerId] = {};
       }
-      
+
       playerRaceState[playerId].finished = true;
       playerRaceState[playerId].finishTime = raceStatus.finishTime;
       playerRaceState[playerId].position = 1; // First place
-      
+
       // Broadcast winner to all players - disable this to remove the 1000m announcements
       /*
       io.emit('race-winner', {
@@ -374,23 +378,23 @@ io.on('connection', socket => {
       if (!playerRaceState[playerId]) {
         playerRaceState[playerId] = {};
       }
-      
+
       playerRaceState[playerId].finished = true;
       playerRaceState[playerId].finishTime = Date.now();
-      
+
       // Count how many players finished before this one
       let position = 1; // Start at 1 (first place already taken)
       Object.keys(playerRaceState).forEach(pid => {
-        if (pid !== playerId && playerRaceState[pid].finished && 
-            playerRaceState[pid].finishTime < playerRaceState[playerId].finishTime) {
+        if (pid !== playerId && playerRaceState[pid].finished &&
+          playerRaceState[pid].finishTime < playerRaceState[playerId].finishTime) {
           position++;
         }
       });
-      
+
       playerRaceState[playerId].position = position + 1;
-      
+
       console.log(`Player ${playerId} (${playerName || players[playerId]?.name}) finished in position ${position + 1}`);
-      
+
       // Notify only this player of their finish position
       io.to(playerId).emit('player-finished-position', {
         position: position + 1
@@ -407,7 +411,7 @@ io.on('connection', socket => {
       handlePlayerFinish(socket.customId, playerName);
     } else {
       console.log(`Player ${socket.customId} attempted to claim race finish but didn't meet distance requirement.`);
-      
+
       // Send corrected position back to the client if they claim to have finished but haven't
       if (player) {
         socket.emit('position-correction', {
@@ -429,22 +433,22 @@ io.on('connection', socket => {
       raceStatus.startTime = Date.now();
       raceStatus.finishTime = null;
       raceStatus.distance = raceDistance;
-      
+
       // Regenerate obstacles for variety
       generateObstacles();
-      
+
       console.log(`Race restarted by ${socket.customId}`);
-      
+
       // Reset all player positions server-side
       Object.keys(players).forEach(playerId => {
         // Skip players who are disconnected
         if (players[playerId].disconnectedAt) return;
-        
+
         // Reset player position
         players[playerId].x = 0;
         players[playerId].y = 0;
         players[playerId].isJumping = false;
-        
+
         // Create or update race state for each player
         playerRaceState[playerId] = {
           startTime: raceStatus.startTime,
@@ -454,20 +458,20 @@ io.on('connection', socket => {
           position: null
         };
       });
-      
+
       // Broadcast race restart to ALL connected players
       io.emit('restart-race', {
         startTime: raceStatus.startTime,
         distance: raceDistance,
         fromHost: true
       });
-      
+
       // Force position update to all connected players to ensure synchronization
       setTimeout(() => {
         Object.keys(players).forEach(playerId => {
           // Skip disconnected players
           if (players[playerId].disconnectedAt) return;
-          
+
           // Find the socket associated with this player
           const playerSocket = findSocketByCustomId(playerId);
           if (playerSocket) {
@@ -477,7 +481,7 @@ io.on('connection', socket => {
               x: 0,
               y: 0
             });
-            
+
             // Broadcast the reset position to players who can see this player
             if (playerVisibility[playerId]) {
               playerVisibility[playerId].forEach(visibleToId => {
@@ -507,11 +511,11 @@ io.on('connection', socket => {
   socket.on('reconnect-to-race', (callback) => {
     const playerId = socket.customId;
     console.log(`Player ${playerId} is reconnecting to the race`);
-    
+
     // If player exists but disconnected, restore their state
     if (players[playerId]) {
       console.log(`Restoring race state for player ${playerId}`);
-      
+
       // Send current race status
       callback({
         success: true,
@@ -535,7 +539,7 @@ io.on('connection', socket => {
             isJumping: players[id].isJumping
           }))
       });
-      
+
       // Notify other players about this player's reconnection
       playerVisibility[playerId]?.forEach(visibleToId => {
         if (visibleToId !== playerId) {
@@ -559,29 +563,29 @@ io.on('connection', socket => {
   // Join by player ID
   socket.on('join-by-id', ({ targetId }, callback) => {
     console.log(`Player ${socket.customId} is trying to join player ${targetId}`);
-    
+
     // Check if target player exists
     if (players[targetId]) {
       console.log(`Target player ${targetId} found. Sending join request.`);
-      
+
       // Initialize the player if not already initialized
       if (!players[socket.customId]) {
         players[socket.customId] = { x: 0, y: 0, name: 'Player' };
       }
-      
+
       // Send join request to the target player
       // We need to use socket.id to emit to a particular socket, but customId for the data
       io.to(targetId).emit('join-request', {
         playerId: socket.customId,
         playerName: players[socket.customId]?.name || 'Unknown Player'
       });
-      
+
       callback({ success: true });
     } else {
       console.log(`Target player ${targetId} not found.`);
-      callback({ 
-        success: false, 
-        message: 'Player not found. Please check the ID and try again.' 
+      callback({
+        success: false,
+        message: 'Player not found. Please check the ID and try again.'
       });
     }
   });
@@ -590,7 +594,7 @@ io.on('connection', socket => {
   socket.on('accept-join-request', ({ playerId }) => {
     try {
       console.log(`Player ${socket.customId} accepted join request from ${playerId}`);
-      
+
       // Make sure both players exist
       if (players[socket.customId] && players[playerId]) {
         // Add visibility between the players
@@ -598,19 +602,19 @@ io.on('connection', socket => {
           playerVisibility[socket.customId] = new Set([socket.customId]);
         }
         playerVisibility[socket.customId].add(playerId);
-        
+
         if (!playerVisibility[playerId]) {
           playerVisibility[playerId] = new Set([playerId]);
         }
         playerVisibility[playerId].add(socket.customId);
-        
+
         // Notify the joining player that their request was accepted
         io.to(playerId).emit('request-accepted', {
           hostId: socket.customId,
           hostName: players[socket.customId].name,
           isRequestSender: true
         });
-        
+
         // Send each player's info to the other
         io.to(socket.customId).emit('new-player', {
           id: playerId,
@@ -619,7 +623,7 @@ io.on('connection', socket => {
           y: players[playerId].y,
           isRequestAccepter: true
         });
-        
+
         io.to(playerId).emit('new-player', {
           id: socket.customId,
           name: players[socket.customId].name,
@@ -627,7 +631,7 @@ io.on('connection', socket => {
           y: players[socket.customId].y,
           isRequestAccepter: false
         });
-        
+
         // Notify both sides that the player is now visible
         io.to(socket.customId).emit('player-joined', { id: playerId });
         io.to(playerId).emit('player-joined', { id: socket.customId });
@@ -641,19 +645,19 @@ io.on('connection', socket => {
   socket.on('player-leave', ({ playerId }) => {
     try {
       console.log(`Player ${socket.customId} is leaving the game`);
-      
+
       // Mark this player as disconnected with timestamp
       if (players[socket.customId]) {
         players[socket.customId].disconnectedAt = Date.now();
         players[socket.customId].disconnectedVoluntarily = true;
       }
-      
+
       // If this player is host, remove host status
       if (gameHost === socket.customId) {
         console.log(`Host player ${socket.customId} is leaving, clearing host status`);
         gameHost = null;
       }
-      
+
       // Notify other players that can see this player
       for (const [id, visibleToIds] of Object.entries(playerVisibility)) {
         if (visibleToIds.has(socket.customId) && id !== socket.customId) {
@@ -661,7 +665,7 @@ io.on('connection', socket => {
           io.to(id).emit('player-disconnected', { id: socket.customId });
         }
       }
-      
+
       // Clean up visibility tracking for this player
       delete playerVisibility[socket.customId];
     } catch (error) {
@@ -673,33 +677,33 @@ io.on('connection', socket => {
   socket.on('disconnect', () => {
     try {
       console.log(`Player disconnected: ${socket.customId}`);
-      
+
       // If the host disconnects, clear the host
       if (socket.customId === gameHost) {
         gameHost = null;
         console.log('Game host disconnected, host position is now open');
       }
-      
+
       // Store race state before disconnection, keeping the player's data
       // for potential reconnection for a limited time (5 minutes)
       if (players[socket.customId]) {
         players[socket.customId].disconnectedAt = Date.now();
-        
+
         // We'll keep the player data for reconnection purposes
         // but mark them as disconnected for other players
-        
+
         // Schedule cleanup after 5 minutes
         setTimeout(() => {
           try {
             // Only remove if the player hasn't reconnected
             if (players[socket.customId] && players[socket.customId].disconnectedAt) {
               console.log(`Cleaning up disconnected player ${socket.customId} after timeout`);
-              
+
               // Perform full cleanup now
               delete players[socket.customId];
               delete playerVisibility[socket.customId];
               delete playerRaceState[socket.customId];
-              
+
               // Remove invite code if it belonged to this player
               for (const code in inviteCodes) {
                 if (inviteCodes[code] === socket.customId) {
@@ -712,7 +716,7 @@ io.on('connection', socket => {
           }
         }, 5 * 60 * 1000); // 5 minutes in milliseconds
       }
-      
+
       // Notify only players who could see this player about the disconnection
       if (playerVisibility[socket.customId]) {
         playerVisibility[socket.customId].forEach(visibleToId => {
@@ -721,7 +725,7 @@ io.on('connection', socket => {
           }
         });
       }
-      
+
       // Release the ID for reuse after a longer timeout (to allow reconnection)
       setTimeout(() => {
         try {
@@ -741,30 +745,30 @@ setInterval(() => {
   try {
     const now = Date.now();
     const inactiveThreshold = 10 * 60 * 1000; // 10 minutes
-    
+
     Object.keys(players).forEach(playerId => {
       try {
         const player = players[playerId];
-        
+
         // Check if player is disconnected for too long
         if (player && player.disconnectedAt && (now - player.disconnectedAt > inactiveThreshold)) {
           console.log(`Removing inactive disconnected player ${playerId}`);
-          
+
           // Perform full cleanup
           delete players[playerId];
           delete playerVisibility[playerId];
           delete playerRaceState[playerId];
-          
+
           // Remove invite code if it belonged to this player
           for (const code in inviteCodes) {
             if (inviteCodes[code] === playerId) {
               delete inviteCodes[code];
             }
           }
-          
+
           // Release the ID
           existingIds.delete(playerId);
-          
+
           // Notify other players that this player has been permanently removed
           for (const [id, visibleToIds] of Object.entries(playerVisibility)) {
             if (visibleToIds.has(playerId)) {
