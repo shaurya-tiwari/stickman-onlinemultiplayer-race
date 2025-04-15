@@ -1152,25 +1152,19 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
           </div>
 
           {/* Game frame with animated border */}
-          {/* Game frame with animated border */}
-          <div className="p-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 rounded-xl animate-gradient-x overflow-x-auto w-full">
-            <div className="w-full overflow-x-auto">
-              <canvas
-                ref={canvasRef}
-                width={800}
-                height={600}
-                className="rounded-lg bg-white w-full h-auto max-w-full sm:max-w-[800px]"
-                style={{
-                  maxWidth: '100%',
-                  height: 'auto',
-                  boxShadow: 'inset 0 0 20px 10px rgba(0, 0, 0, 0.3)',
-                  borderRadius: '8px',
-                  overflow: 'hidden'
-                }}
-              />
-            </div>
+          <div className="p-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 rounded-xl animate-gradient-x">
+            <canvas
+              ref={canvasRef}
+              width={800}
+              height={600}
+              className="rounded-lg bg-white w-full max-w-[800px] h-auto"
+              style={{
+                boxShadow: 'inset 0 0 20px 10px rgba(0, 0, 0, 0.3)',
+                borderRadius: '8px',
+                overflow: 'hidden'
+              }}
+            />
           </div>
-
 
           {/* Consolidated Game UI Panel - Top right */}
           <div className="absolute top-4 right-4 flex flex-col space-y-2">
@@ -1330,9 +1324,8 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
             const playerMoving = id === myId ? isMoving : false;
 
             // Ensure player stays within canvas boundaries for display
-            const canvasWidth = window.innerWidth < 800 ? window.innerWidth : 800;
-            const constrainedX = Math.max(0, Math.min(drawX, canvasWidth - 30)); // player width: 30px
-            const constrainedY = Math.max(0, Math.min(roadY - 60 - player.y, window.innerHeight - 100));
+            const constrainedX = Math.max(0, Math.min(drawX, 770)); // 800 - player width (30px)
+            const constrainedY = Math.max(0, Math.min(roadY - 60 - player.y, 540)); // 600 - player height (60px)
 
             // Create a more reliable animation approach
             const getPlayerStyle = () => {
