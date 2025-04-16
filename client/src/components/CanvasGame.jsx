@@ -73,7 +73,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
   const pressedKeys = useRef({});
   const velocityY = useRef(0);
   const gravity = 1;
-  const groundY = 0;
+  const groundY = 10;
   const fixedPlayerX = 400;
   const [isMoving, setIsMoving] = useState(false);
   const lastPosRef = useRef(0);
