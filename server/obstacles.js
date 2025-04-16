@@ -5,23 +5,24 @@ const obstacleTypes = [
   { 
     name: 'rock',
     filename: 'rock.png',
-    width: 60,
-    height: 60,
-    collisionAdjustment: { x: 5, y: 5, width: -10, height: -10 } // Smaller hitbox than visual
+    width: 90,
+    height: 130,
+    
+    collisionAdjustment: { x: 5, y: 5, width: -30, height: -10 } // Smaller hitbox than visual
   },
   { 
     name: 'barrel',
     filename: 'barrel.png',
-    width: 60,
-    height: 60,
-    collisionAdjustment: { x: 10, y: 10, width: -20, height: -10 } // Smaller hitbox than visual
+    width: 70,
+    height: 70,
+    collisionAdjustment: { x: 10, y: 10, width: -10, height: -10 } // Smaller hitbox than visual
   },
   { 
     name: 'spike',
     filename: 'spike.png',
     width: 60,
     height: 60,
-    collisionAdjustment: { x: 15, y: 30, width: -30, height: -40 } // Much smaller hitbox for the spikes
+    collisionAdjustment: { x: 15, y: 30, width: -20, height: -20 } // Much smaller hitbox for the spikes
   }
 ];
 
@@ -43,8 +44,8 @@ const getCollisionBox = (obstacle) => {
       return {
         x: obstacle.x || 0,
         y: 0,
-        width: 60,
-        height: 60
+        width: 90,
+        height: 90
       };
     }
     
@@ -82,8 +83,8 @@ const checkCollision = (player, obstacle) => {
     const playerBox = {
       x: player.x || 0,
       y: 0,
-      width: 30, // Player width
-      height: 60  // Player height
+      width: 40, // Player width
+      height: 70  // Player height
     };
     
     // Standard AABB collision detection
@@ -103,7 +104,7 @@ const checkCollision = (player, obstacle) => {
 const generateObstacles = (count, distance) => {
   try {
     const obstaclesList = [];
-    const minDistance = 400;  // Minimum distance between obstacles
+    const minDistance = 200;  // Minimum distance between obstacles
     const safeCount = Math.min(Math.max(0, count || 0), 100); // Ensure count is reasonable
     
     for (let i = 0; i < safeCount; i++) {
