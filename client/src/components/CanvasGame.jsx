@@ -558,7 +558,9 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       });
 
       // Show collision bounce animation
-      setCollisionBounce(true);
+      if (!collisionBounce) {
+        setCollisionBounce(true);
+      }
       if (collisionTimer.current) {
         clearTimeout(collisionTimer.current);
       }
@@ -969,7 +971,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
 
         // Update the movement state if needed
         if (isCurrentlyMoving !== isMoving) {
-          setIsMoving(isCurrentlyMoving);
+          requestAnimationFrame(() => setIsMoving(isCurrentlyMoving));
         }
 
         if (updated.x !== me.x || updated.y !== me.y) {
@@ -978,7 +980,9 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
 
           // Send position update to server only if we're connected
           if (socket.connected) {
+            if (updated.x !== me.x || updated.y !== me.y) {
             socket.emit('update-position', updated);
+          }
           }
           return { ...prev, [myId]: updated };
         }
