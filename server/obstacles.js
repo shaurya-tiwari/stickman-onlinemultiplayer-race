@@ -83,7 +83,7 @@ const checkCollision = (player, obstacle) => {
     const playerBox = {
       x: player.x || 0,
       y: 0,
-      width: 40, // Player width
+      width: 30, // Player width
       height: 70  // Player height
     };
 
