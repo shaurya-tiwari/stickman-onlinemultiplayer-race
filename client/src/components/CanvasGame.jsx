@@ -745,7 +745,7 @@ const CanvasGame = ({ playerName, isHost, onError }) => {
       // Draw obstacles with improved sizing, shadows and effects - only draw visible obstacles
       obstacles.forEach(({ x, image }) => {
         // Skip obstacles outside the visible area for performance
-        if (x < visibleLeft - 60 || x > visibleRight + 20) return;
+        if (x < visibleLeft - 200 || x > visibleRight + 200) return;
 
         const drawX = x - cameraOffset;
 
