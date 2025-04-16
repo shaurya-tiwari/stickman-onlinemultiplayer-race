@@ -2,22 +2,22 @@
 let obstacles = [];
 
 const obstacleTypes = [
-  { 
+  {
     name: 'rock',
     filename: 'rock.png',
     width: 90,
     height: 130,
-    
+
     collisionAdjustment: { x: 5, y: 5, width: -30, height: -10 } // Smaller hitbox than visual
   },
-  { 
+  {
     name: 'barrel',
     filename: 'barrel.png',
     width: 70,
     height: 70,
     collisionAdjustment: { x: 10, y: 10, width: -10, height: -10 } // Smaller hitbox than visual
   },
-  { 
+  {
     name: 'spike',
     filename: 'spike.png',
     width: 60,
@@ -33,11 +33,11 @@ const getCollisionBox = (obstacle) => {
       console.warn('Invalid obstacle object in getCollisionBox');
       return { x: 0, y: 0, width: 0, height: 0 }; // Safe default
     }
-    
-    const obstacleType = obstacleTypes.find(type => 
+
+    const obstacleType = obstacleTypes.find(type =>
       type.filename === obstacle.image || type.name === obstacle.type
     );
-    
+
     if (!obstacleType) {
       // Default collision box if type not found
       console.warn(`Unknown obstacle type/image: ${obstacle.image || obstacle.type}`);
@@ -48,7 +48,7 @@ const getCollisionBox = (obstacle) => {
         height: 90
       };
     }
-    
+
     // Apply collision adjustment from the obstacle type
     const adj = obstacleType.collisionAdjustment;
     return {
@@ -71,14 +71,14 @@ const checkCollision = (player, obstacle) => {
       console.warn('Invalid player or obstacle in checkCollision');
       return false;
     }
-    
+
     const obstacleBox = getCollisionBox(obstacle);
-    
+
     // Jumping players only collide if they're low enough
     if (player.isJumping && player.y > obstacleBox.height) {
       return false;
     }
-    
+
     // Create player collision box (adjust as needed)
     const playerBox = {
       x: player.x || 0,
@@ -86,7 +86,7 @@ const checkCollision = (player, obstacle) => {
       width: 40, // Player width
       height: 70  // Player height
     };
-    
+
     // Standard AABB collision detection
     return (
       playerBox.x < obstacleBox.x + obstacleBox.width &&
@@ -106,7 +106,7 @@ const generateObstacles = (count, distance) => {
     const obstaclesList = [];
     const minDistance = 150;  // Minimum distance between obstacles
     const safeCount = Math.min(Math.max(0, count || 0), 100); // Ensure count is reasonable
-    
+
     for (let i = 0; i < safeCount; i++) {
       // Calculate position with minimum safe distance
       let x;
@@ -115,24 +115,24 @@ const generateObstacles = (count, distance) => {
         x = 500 + Math.random() * 300;
       } else {
         // Ensure minimum distance from previous obstacle
-        x = obstaclesList[i-1].x + minDistance + Math.random() * 300;
+        x = obstaclesList[i - 1].x + minDistance + Math.random() * 300;
       }
-      
+
       // Ensure we don't place obstacles too close to finish line
       if (distance && x > distance - 200) {
-        break;
+        continue;
       }
-      
+
       // Select random obstacle type
       const type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
-      
-      obstaclesList.push({ 
-        x, 
+
+      obstaclesList.push({
+        x,
         type: type.name,
-        image: type.filename 
+        image: type.filename
       });
     }
-    
+
     return obstaclesList;
   } catch (error) {
     console.error('Error generating obstacles:', error);
