@@ -104,7 +104,7 @@ const checkCollision = (player, obstacle) => {
 const generateObstacles = (count, distance) => {
   try {
     const obstaclesList = [];
-    const minDistance = 50;  // Minimum distance between obstacles
+    const minDistance = 150;  // Minimum distance between obstacles
     const safeCount = Math.min(Math.max(0, count || 0), 100); // Ensure count is reasonable
     
     for (let i = 0; i < safeCount; i++) {
