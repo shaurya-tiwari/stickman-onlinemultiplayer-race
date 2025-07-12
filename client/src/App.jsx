@@ -1,4 +1,3 @@
-// App.jsx
 import { useState, useEffect, useCallback } from 'react';
 import CanvasGame from './components/CanvasGame';
 import EnterName from './components/EnterName';
@@ -10,15 +9,12 @@ function App() {
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
-  
-  // Try to load persisted state on startup
+
   useEffect(() => {
     try {
       const savedName = localStorage.getItem('playerName');
       const savedIsHost = localStorage.getItem('isHost') === 'true';
-      
       if (savedName) {
-        console.log(`Restoring saved player name: ${savedName}`);
         setPlayerName(savedName);
         setIsHost(savedIsHost);
       }
@@ -26,42 +22,34 @@ function App() {
       console.error('Error loading saved state:', error);
     }
   }, []);
-  
-  // Add error boundary recovery
+
   useEffect(() => {
-    // Custom error handler
     const handleError = (event) => {
-      console.error('Global error caught:', event.error || event.message);
       const errorMsg = event.error?.message || event.message || 'Unknown error occurred';
       setHasError(true);
       setErrorMessage(errorMsg);
     };
-    
-    // Register error handlers
+
     window.addEventListener('error', handleError);
     window.addEventListener('unhandledrejection', handleError);
-    
+
     return () => {
       window.removeEventListener('error', handleError);
       window.removeEventListener('unhandledrejection', handleError);
     };
   }, []);
 
-  // Monitor socket connection status
   useEffect(() => {
     const handleConnect = () => setConnectionStatus('connected');
     const handleDisconnect = () => setConnectionStatus('disconnected');
     const handleConnectError = () => setConnectionStatus('error');
-    
+
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('connect_error', handleConnectError);
-    
-    // Initial status check
-    if (socket.connected) {
-      setConnectionStatus('connected');
-    }
-    
+
+    if (socket.connected) setConnectionStatus('connected');
+
     return () => {
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
@@ -71,25 +59,18 @@ function App() {
 
   const handleStartGame = (name, asHost) => {
     try {
-      // Validate name
       const trimmedName = name?.trim() || 'Player';
-      
-      // Store in state
       setPlayerName(trimmedName);
       setIsHost(!!asHost);
       setHasError(false);
-      
-      // Save to local storage for recovery
       localStorage.setItem('playerName', trimmedName);
       localStorage.setItem('isHost', asHost ? 'true' : 'false');
     } catch (error) {
-      console.error('Error starting game:', error);
-      // Still try to set the name with a fallback
       setPlayerName(name || 'Player');
       setIsHost(!!asHost);
     }
   };
-  
+
   const handleReset = () => {
     setHasError(false);
     setErrorMessage('');
@@ -100,56 +81,61 @@ function App() {
   };
 
   const handleGameError = useCallback((error) => {
-    console.error('Game error:', error);
-    
-    // Check if this is the special EXIT_GAME signal
     if (error?.message === 'EXIT_GAME') {
-      console.log('Exiting game and returning to home screen');
-      handleReset(); // Use the existing reset functionality
-      return; // Don't set error state, just reset
+      handleReset();
+      return;
     }
-    
-    // Normal error handling
     setErrorMessage(error?.message || 'An error occurred in the game.');
     setHasError(true);
   }, []);
 
+  const getStatusDot = () => {
+    const map = {
+      connected: 'bg-green-500',
+      disconnected: 'bg-red-500',
+      error: 'bg-orange-500',
+      connecting: 'bg-yellow-400 animate-pulse'
+    };
+    return map[connectionStatus] || 'bg-gray-400';
+  };
+
   return (
-    <div className="min-h-screen text-white" style={{
-      background: 'linear-gradient(180deg, #1a202c 0%, #4a1d96 50%, #1a202c 100%)'
-    }}>
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-center text-5xl font-bold p-4 mb-8 tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-pink-600 drop-shadow-xl">
-          Stickman Racing
-        </h1>
-        
-        {/* Connection status indicator */}
-        <div className="flex justify-center mb-4">
-          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-            connectionStatus === 'connected' ? 'bg-green-600' : 
-            connectionStatus === 'disconnected' ? 'bg-red-600' : 
-            connectionStatus === 'error' ? 'bg-red-800' : 'bg-yellow-600'
-          }`}>
-            {connectionStatus === 'connected' ? 'Connected' : 
-             connectionStatus === 'disconnected' ? 'Disconnected' : 
-             connectionStatus === 'error' ? 'Connection Error' : 'Connecting...'}
+    <div className="min-h-screen w-full bg-gradient-to-br from-blue-100 via-indigo-100 to-purple-200 text-gray-900 font-sans overflow-x-hidden">
+      <div className="flex flex-col items-center px-4 py-10 min-h-screen">
+        <div className="text-center mb-4">
+          <h1 className="text-5xl font-bold tracking-tight text-gray-800">Stickman Racing</h1>
+          <div className="mt-2 flex items-center justify-center gap-2 text-sm font-medium text-gray-600">
+            <div className={`w-3 h-3 rounded-full ${getStatusDot()}`} />
+            {connectionStatus.charAt(0).toUpperCase() + connectionStatus.slice(1)}
           </div>
         </div>
-        
-        {hasError ? (
-          <div className="text-center p-4 bg-red-900 rounded-lg shadow-lg max-w-md mx-auto">
-            <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
-            <p className="mb-4">{errorMessage || 'An error occurred in the game. Please try again.'}</p>
-          </div>
-        ) : !playerName ? (
-          <EnterName onStart={handleStartGame} />
-        ) : (
-          <CanvasGame 
-            playerName={playerName} 
-            isHost={isHost} 
-            onError={handleGameError}
-          />
-        )}
+
+        <div className="w-full max-w-3xl">
+          {hasError ? (
+            <div className="p-6 bg-white/60 backdrop-blur-md border border-gray-200 rounded-xl shadow-lg text-center">
+              <h2 className="text-2xl font-semibold text-red-700 mb-2">Oops! Something went wrong</h2>
+              <p className="text-sm text-red-600">{errorMessage}</p>
+              <button
+                onClick={handleReset}
+                className="mt-4 px-5 py-2 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-md transition"
+              >
+                Go Back
+              </button>
+            </div>
+          ) : !playerName ? (
+            <div className="p-6 bg-white/50 backdrop-blur-lg rounded-xl shadow-md border border-gray-200">
+              <EnterName onStart={handleStartGame} />
+            </div>
+          ) : (
+            <div className="rounded-xl overflow-hidden shadow-2xl backdrop-blur-md bg-white/40 border border-white/30">
+              <CanvasGame
+                playerName={playerName}
+                isHost={isHost}
+                onError={handleGameError}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
